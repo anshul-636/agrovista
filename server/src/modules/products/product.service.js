@@ -140,23 +140,29 @@ const getFarmerProducts = async (farmerId) => {
 // ──────────────────────────────────────────────
 // UPDATE PRODUCT
 // ──────────────────────────────────────────────
-const updateProduct = async (productId, farmerId, data, files) => {
+const updateProduct = async (productId, farmerId, farmerName, data, files) => {
     const existing = await Product.findById(productId)
 
     if (!existing) throw new ApiError(404, 'Product not found')
 
-    // Check ownership — farmer can only edit their own products
     if (existing.farmer.toString() !== farmerId.toString()) {
         throw new ApiError(403, 'You can only edit your own products')
     }
 
-    // If price is changing, log the OLD price to price history
+    // Handle price changes
     if (data.price && parseFloat(data.price) !== existing.price) {
-        await PriceHistory.create({
-            product: productId,
-            price: existing.price
-        })
+        const newPrice = parseFloat(data.price)
+
+        if (newPrice < existing.price) {
+            // Price drop: notify all wishlisters via Socket.IO fan-out
+            const { notifyPriceDrop } = require('../wishlist/wishlist.service')
+            await notifyPriceDrop(productId, existing.price, newPrice, existing.name, farmerName)
+        } else {
+            // Price increase: just log it silently
+            await PriceHistory.create({ product: productId, price: existing.price })
+        }
     }
+
 
     // Use new images if uploaded, otherwise keep existing
     const images = files && files.length > 0

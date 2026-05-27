@@ -9,6 +9,11 @@ const app = express()
 
 const orderRoutes = require('./modules/orders/order.routes')
 const analyticsRoutes = require('./modules/analytics/analytics.routes')
+
+const auctionRoutes = require('./modules/auctions/auction.routes')
+const chatRoutes = require('./modules/chat/chat.routes')
+const wishlistRoutes = require('./modules/wishlist/wishlist.routes')
+
 // ── Middlewares ──────────────────────────────
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
@@ -32,6 +37,9 @@ app.use('/api/auth', authRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/analytics', analyticsRoutes)
+app.use('/api/auctions', auctionRoutes)
+app.use('/api/chat', chatRoutes)
+app.use('/api/wishlist', wishlistRoutes)
 
 // ── 404 Handler ──────────────────────────────
 app.use((req, res) => {

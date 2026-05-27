@@ -142,7 +142,6 @@ const updateOrderStatus = async (orderId, farmerId, newStatus) => {
         throw new ApiError(403, 'You can only update your own orders')
     }
 
-    // Validate the status transition using state machine
     validateTransition(order.status, newStatus)
 
     order.status = newStatus
@@ -153,9 +152,22 @@ const updateOrderStatus = async (orderId, farmerId, newStatus) => {
         { path: 'product', select: 'name images' }
     ])
 
+    // Real-time push: notify the buyer instantly
+    // We use a try-catch so if Socket.IO fails, the order update still succeeds
+    try {
+        const { getIO } = require('../../config/socket')
+        getIO().to('user:' + order.buyer._id.toString()).emit('order:updated', {
+            orderId: order._id,
+            status: newStatus,
+            productName: order.product.name,
+            updatedAt: new Date()
+        })
+    } catch (err) {
+        console.error('Socket emit failed:', err.message)
+    }
+
     return order
 }
-
 // ──────────────────────────────────────────────
 // CANCEL ORDER (BUYER)
 // ──────────────────────────────────────────────

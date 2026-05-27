@@ -61,7 +61,13 @@ const getPriceHistoryHandler = asyncHandler(async (req, res) => {
 
 // PUT /api/products/:id
 const update = asyncHandler(async (req, res) => {
-    const product = await updateProduct(req.params.id, req.user._id, req.body, req.files)
+    const product = await updateProduct(
+        req.params.id,
+        req.user._id,
+        req.user.name,    // pass farmer name for notification
+        req.body,
+        req.files
+    )
     res.json(new ApiResponse(200, product, 'Product updated successfully'))
 })
 
