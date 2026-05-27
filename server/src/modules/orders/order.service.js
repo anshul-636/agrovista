@@ -152,18 +152,18 @@ const updateOrderStatus = async (orderId, farmerId, newStatus) => {
         { path: 'product', select: 'name images' }
     ])
 
-    // Real-time push: notify the buyer instantly
-    // We use a try-catch so if Socket.IO fails, the order update still succeeds
+    // Real-time push + MongoDB Notification
     try {
-        const { getIO } = require('../../config/socket')
-        getIO().to('user:' + order.buyer._id.toString()).emit('order:updated', {
-            orderId: order._id,
-            status: newStatus,
-            productName: order.product.name,
-            updatedAt: new Date()
+        const { createNotification } = require('../notifications/notification.service')
+        
+        await createNotification({
+            userId: order.buyer._id,
+            type: 'ORDER_UPDATE',
+            title: `Order ${newStatus}`,
+            body: `Your order for ${order.product.name} is now ${newStatus}.`
         })
     } catch (err) {
-        console.error('Socket emit failed:', err.message)
+        console.error('Notification failed:', err.message)
     }
 
     return order
