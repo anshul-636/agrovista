@@ -3,6 +3,7 @@ const cors = require('cors')
 const cookieParser = require('cookie-parser')
 
 const authRoutes = require('./modules/auth/auth.routes')
+const productRoutes = require('./modules/products/product.routes')
 
 const app = express()
 
@@ -26,6 +27,7 @@ app.get('/health', (req, res) => {
 
 // ── Routes ───────────────────────────────────
 app.use('/api/auth', authRoutes)
+app.use('/api/products', productRoutes)
 
 // ── 404 Handler ──────────────────────────────
 app.use((req, res) => {
