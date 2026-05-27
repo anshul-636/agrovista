@@ -7,6 +7,8 @@ const productRoutes = require('./modules/products/product.routes')
 
 const app = express()
 
+const orderRoutes = require('./modules/orders/order.routes')
+const analyticsRoutes = require('./modules/analytics/analytics.routes')
 // ── Middlewares ──────────────────────────────
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
@@ -28,6 +30,8 @@ app.get('/health', (req, res) => {
 // ── Routes ───────────────────────────────────
 app.use('/api/auth', authRoutes)
 app.use('/api/products', productRoutes)
+app.use('/api/orders', orderRoutes)
+app.use('/api/analytics', analyticsRoutes)
 
 // ── 404 Handler ──────────────────────────────
 app.use((req, res) => {
