@@ -33,13 +33,13 @@ router.get(
             );
             
             // Redirect to frontend with tokens
-            const frontendURL = process.env.CLIENT_URL || 'http://localhost:3002';
+            const frontendURL = process.env.CLIENT_URL || 'http://localhost:3000';
             return res.redirect(
                 `${frontendURL}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}&userId=${user._id}&email=${user.email}&name=${user.name}&role=${user.role}`
             );
         } catch (err) {
             console.error('[OAuth] Error:', err);
-            const frontendURL = process.env.CLIENT_URL || 'http://localhost:3002';
+            const frontendURL = process.env.CLIENT_URL || 'http://localhost:3000';
             return res.redirect(`${frontendURL}/login?error=auth_failed`);
         }
     }
