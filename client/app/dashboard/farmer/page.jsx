@@ -143,7 +143,7 @@ export default function FarmerDashboard() {
             {[
               {
                 title: "Monthly Earnings",
-                value: `₹${analytics.summary.thisMonthRevenue.toLocaleString()}`,
+                value: `₹${(analytics?.summary?.thisMonthRevenue || 0).toLocaleString()}`,
                 desc: "+14% from last month",
                 icon: TrendingUp,
                 color: "text-agri-green bg-agri-green/10"
@@ -157,7 +157,7 @@ export default function FarmerDashboard() {
               },
               {
                 title: "Active Products",
-                value: analytics.summary.activeProducts,
+                value: analytics?.summary?.activeProducts || 0,
                 desc: "Listed on marketplace",
                 icon: ShoppingBag,
                 color: "text-agri-brown bg-agri-brown/10"
@@ -199,7 +199,7 @@ export default function FarmerDashboard() {
                 <CardDescription>7-Day Daily Sales Performance</CardDescription>
               </CardHeader>
               <CardContent>
-                <RevenueChart data={analytics.revenueTrend} />
+                <RevenueChart data={analytics?.revenueTrend || []} />
               </CardContent>
             </Card>
 
@@ -217,7 +217,7 @@ export default function FarmerDashboard() {
                 <CardDescription>Revenue by crop listing</CardDescription>
               </CardHeader>
               <CardContent>
-                <TopProducts data={analytics.topProducts} />
+                <TopProducts data={analytics?.topProducts || []} />
               </CardContent>
             </Card>
 
@@ -228,7 +228,7 @@ export default function FarmerDashboard() {
                 <CardDescription>Crop Category Allocation</CardDescription>
               </CardHeader>
               <CardContent>
-                <CategoryDonut data={analytics.categoryData} />
+                <CategoryDonut data={analytics?.categoryData || []} />
               </CardContent>
             </Card>
 
@@ -249,7 +249,7 @@ export default function FarmerDashboard() {
                 <div className="space-y-2.5 text-xs text-agri-brown dark:text-gray-300">
                   <div className="flex justify-between font-semibold">
                     <span>Order Completion Rate</span>
-                    <span className="text-agri-green-dark dark:text-agri-green-light font-extrabold">{analytics.summary.completionRate}%</span>
+                    <span className="text-agri-green-dark dark:text-agri-green-light font-extrabold">{analytics?.summary?.completionRate || 0}%</span>
                   </div>
                   <div className="flex justify-between font-semibold">
                     <span>Average Customer Rating</span>

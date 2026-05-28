@@ -342,9 +342,38 @@ export const apiService = {
 
   // Products Operations
   getProducts: async (filters = {}) => {
+    // Normalize a backend product document into the shape the frontend expects
+    const normalizeProduct = (p) => ({
+      ...p,
+      id: p.id || p._id,
+      farmerName: p.farmerName || p.farmer?.name || "Unknown",
+      farmerLocation: p.farmerLocation || p.farmer?.location || p.location || "India",
+      farmerTrustScore: p.farmerTrustScore || p.farmer?.trustScore || 90,
+      images: p.images && p.images.length > 0 ? p.images : ["https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"],
+    });
+
     try {
+      if (filters.farmer === "mine") {
+        const res = await api.get("/products/farmer/mine");
+        let filtered = (res.data?.data || []).map(normalizeProduct);
+        if (filters.search) {
+          filtered = filtered.filter(p => p.name.toLowerCase().includes(filters.search.toLowerCase()) || (p.description || "").toLowerCase().includes(filters.search.toLowerCase()));
+        }
+        if (filters.category && filters.category !== "All Categories" && filters.category !== "All") {
+          filtered = filtered.filter(p => p.category.toLowerCase() === filters.category.toLowerCase());
+        }
+        if (filters.isOrganic === "true" || filters.isOrganic === true) {
+          filtered = filtered.filter(p => p.isOrganic);
+        }
+        return { success: true, data: filtered };
+      }
+
       const res = await api.get("/products", { params: filters });
-      return res.data;
+      // Backend returns { data: { products: [...], total, page, totalPages } }
+      // Normalize to { success: true, data: [...] } for the frontend
+      const backendData = res.data?.data;
+      const rawProducts = Array.isArray(backendData) ? backendData : (backendData?.products || []);
+      return { success: true, data: rawProducts.map(normalizeProduct) };
     } catch (e) {
       console.warn("[API] getProducts error, returning mock.");
       let filtered = [...mockProducts];

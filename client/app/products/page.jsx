@@ -10,8 +10,12 @@ import Badge from "../../components/ui/Badge";
 import Input from "../../components/ui/Input";
 import { apiService } from "../../lib/api";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 export default function ProductListingPage() {
+  const searchParams = useSearchParams();
+  const farmerFilter = searchParams ? searchParams.get("farmer") : null;
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [isOrganic, setIsOrganic] = useState(false);
@@ -19,8 +23,8 @@ export default function ProductListingPage() {
 
   // Fetch products with TanStack Query
   const { data: productsRes, isLoading, refetch } = useQuery({
-    queryKey: ["products", { search, category, isOrganic }],
-    queryFn: () => apiService.getProducts({ search, category, isOrganic }),
+    queryKey: ["products", { search, category, isOrganic, farmer: farmerFilter }],
+    queryFn: () => apiService.getProducts({ search, category, isOrganic, farmer: farmerFilter }),
   });
 
   const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
