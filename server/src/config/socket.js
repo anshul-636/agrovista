@@ -23,7 +23,7 @@ const initSocket = (httpServer) => {
             }
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET)
-            socket.userId = decoded.userId
+            socket.userId = decoded.id
             next()
         } catch (err) {
             next(new Error('Authentication error - invalid token'))

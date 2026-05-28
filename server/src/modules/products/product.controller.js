@@ -20,14 +20,15 @@ const create = asyncHandler(async (req, res) => {
         throw new ApiError(400, 'Required: name, description, category, price, unit, quantity')
     }
 
-    if (!ALLOWED_CATEGORIES.includes(category)) {
+    const categoryUpper = category?.toUpperCase()
+    if (!ALLOWED_CATEGORIES.includes(categoryUpper)) {
         throw new ApiError(400, 'Category must be one of: ' + ALLOWED_CATEGORIES.join(', '))
     }
 
     if (parseFloat(price) <= 0) throw new ApiError(400, 'Price must be greater than 0')
     if (parseInt(quantity) < 0) throw new ApiError(400, 'Quantity cannot be negative')
 
-    const product = await createProduct(req.user._id, req.body, req.files)
+    const product = await createProduct(req.user._id, { ...req.body, category: categoryUpper }, req.files)
 
     res.status(201).json(new ApiResponse(201, product, 'Product created successfully'))
 })

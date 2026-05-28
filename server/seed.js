@@ -100,6 +100,7 @@ const seed = async () => {
         log(`Created ${farmers.length} farmers and ${buyers.length} buyers`)
 
         log('Uploading product images to Cloudinary (this may take 30-60 seconds)...')
+        const productData = [
             { name: 'Fresh Tomatoes',       category: 'VEGETABLES', price: 40,  unit: 'kg',     quantity: 500, isOrganic: true,  location: 'Pune',     farmerIdx: 0, imgCategory: 'VEGETABLES', imgIdx: 0 },
             { name: 'Green Spinach',         category: 'VEGETABLES', price: 25,  unit: 'bundle', quantity: 200, isOrganic: true,  location: 'Pune',     farmerIdx: 0, imgCategory: 'VEGETABLES', imgIdx: 1 },
             { name: 'Brinjal (Eggplant)',   category: 'VEGETABLES', price: 35,  unit: 'kg',     quantity: 150, isOrganic: false, location: 'Pune',     farmerIdx: 0, imgCategory: 'VEGETABLES', imgIdx: 2 },

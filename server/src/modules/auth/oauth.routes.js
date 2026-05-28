@@ -17,23 +17,31 @@ router.get(
     passport.authenticate('google', { session: false }),
     (req, res) => {
         try {
-            const user = req.user;
-            
+            const { user, isNewUser } = req.user;
+
             // Generate JWT tokens
             const accessToken = jwt.sign(
-                { id: user._id, email: user.email, role: user.role },
+                { userId: user._id, email: user.email, role: user.role },
                 process.env.JWT_SECRET,
                 { expiresIn: '15m' }
             );
-            
+
             const refreshToken = jwt.sign(
-                { id: user._id },
+                { userId: user._id },
                 process.env.JWT_REFRESH_SECRET,
                 { expiresIn: '7d' }
             );
-            
-            // Redirect to frontend with tokens
+
             const frontendURL = process.env.CLIENT_URL || 'http://localhost:3000';
+            
+            // For new OAuth users, redirect to role selection
+            if (isNewUser) {
+                return res.redirect(
+                    `${frontendURL}/select-role?accessToken=${accessToken}&refreshToken=${refreshToken}&userId=${user._id}&email=${user.email}&name=${user.name}`
+                );
+            }
+            
+            // Existing users go directly to dashboard
             return res.redirect(
                 `${frontendURL}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}&userId=${user._id}&email=${user.email}&name=${user.name}&role=${user.role}`
             );

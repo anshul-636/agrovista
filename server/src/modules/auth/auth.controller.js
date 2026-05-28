@@ -1,7 +1,7 @@
 const asyncHandler = require('../../utils/asyncHandler')
 const ApiResponse = require('../../utils/ApiResponse')
 const ApiError = require('../../utils/ApiError')
-const { registerUser, loginUser, refreshAccessToken } = require('./auth.service')
+const { registerUser, loginUser, refreshAccessToken, generateTokens } = require('./auth.service')
 
 const COOKIE_OPTIONS = {
     httpOnly: true,
@@ -11,7 +11,7 @@ const COOKIE_OPTIONS = {
 }
 
 const register = asyncHandler(async (req, res) => {
-    const { name, email, password, role } = req.body
+    const { name, email, password, role, phone, location } = req.body
 
     if (!name || !email || !password || !role) {
         throw new ApiError(400, 'All fields are required: name, email, password, role')
@@ -25,10 +25,13 @@ const register = asyncHandler(async (req, res) => {
         throw new ApiError(400, 'Password must be at least 6 characters')
     }
 
-    const user = await registerUser({ name, email, password, role })
+    const user = await registerUser({ name, email, password, role, phone, location })
+
+    // Generate tokens for immediate login
+    const { accessToken, refreshToken } = generateTokens(user._id.toString())
 
     res.status(201).json(
-        new ApiResponse(201, user, 'Account created successfully')
+        new ApiResponse(201, { user: user.toJSON(), accessToken, refreshToken }, 'Account created successfully')
     )
 })
 

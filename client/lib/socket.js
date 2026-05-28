@@ -101,6 +101,7 @@ class MockSocket {
         });
       }, 50);
 
+/* 
       // Trigger automatic replies from the opposite role after 2.5 seconds
       setTimeout(() => {
         const replies = [
@@ -122,6 +123,7 @@ class MockSocket {
           createdAt: new Date().toISOString()
         });
       }, 2500);
+      */
     }
 
     if (event === "join:user") {
@@ -158,17 +160,20 @@ export function getSocket() {
     try {
       // Attempt real connection if URL is local/reachable, else use Mock
       console.log(`[Socket] Attempting connection to ${SOCKET_URL}`);
+      const token = localStorage.getItem("agrovista_token");
+      
       const realSocket = io(SOCKET_URL, {
         autoConnect: false,
         timeout: 3000,
-        reconnectionAttempts: 2
+        reconnectionAttempts: 2,
+        auth: { token }
       });
 
       realSocket.connect();
       
       // Listen for error or timeout to fall back
-      realSocket.on("connect_error", () => {
-        console.warn("[Socket] Connect error, falling back to MockSocket emulation.");
+      realSocket.on("connect_error", (error) => {
+        console.warn("[Socket] Connect error, falling back to MockSocket emulation.", error.message);
         socketInstance = new MockSocket();
         socketInstance.connect();
       });

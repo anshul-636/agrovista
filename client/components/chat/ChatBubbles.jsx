@@ -4,18 +4,18 @@ import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCheck, Check, Clock } from "lucide-react";
 
-// Message status indicator
+// Message status indicator styled like WhatsApp
 const MessageStatus = ({ status, isMe }) => {
   if (!isMe) return null;
 
   const statusMap = {
-    sending: <Clock className="w-3 h-3 text-gray-400" />,
-    sent: <Check className="w-3 h-3 text-gray-400" />,
-    delivered: <CheckCheck className="w-3 h-3 text-gray-400" />,
-    seen: <CheckCheck className="w-3 h-3 text-blue-500" />,
+    sending: <Clock className="w-3 h-3 text-gray-500/80 dark:text-gray-400" />,
+    sent: <Check className="w-3 h-3 text-gray-500/80 dark:text-gray-400" />,
+    delivered: <CheckCheck className="w-3 h-3 text-gray-500/80 dark:text-gray-400" />,
+    seen: <CheckCheck className="w-3 h-3 text-[#53bdeb]" />,
   };
 
-  return statusMap[status] || null;
+  return <div className="ml-1 inline-flex items-center">{statusMap[status] || null}</div>;
 };
 
 // Time separator
@@ -26,16 +26,16 @@ const TimeSeparator = ({ date }) => {
     if (isNaN(dateObj.getTime())) return null;
     
     return (
-      <div className="flex items-center gap-3 my-4 px-4">
-        <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-700" />
-        <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold">
-          {dateObj.toLocaleDateString([], { 
-            month: 'short', 
-            day: 'numeric',
-            year: dateObj.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
-          })}
-        </span>
-        <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-700" />
+      <div className="flex justify-center my-4 relative z-10">
+        <div className="bg-[#ffffff] dark:bg-[#182229] shadow-sm rounded-lg px-3 py-1.5 flex items-center justify-center border border-gray-100 dark:border-zinc-800">
+          <span className="text-[11px] text-[#54656f] dark:text-[#8696a0] font-medium uppercase tracking-wide">
+            {dateObj.toLocaleDateString([], { 
+              month: 'long', 
+              day: 'numeric',
+              year: dateObj.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+            })}
+          </span>
+        </div>
       </div>
     );
   } catch (e) {
@@ -46,27 +46,27 @@ const TimeSeparator = ({ date }) => {
 
 // Typing indicator
 const TypingIndicator = () => (
-  <div className="flex items-end gap-1.5 p-3 bg-white dark:bg-zinc-800 rounded-3xl w-fit">
+  <div className="flex items-center gap-1 p-2 h-full">
     <motion.div
-      animate={{ y: [0, -6, 0] }}
+      animate={{ y: [0, -3, 0] }}
       transition={{ duration: 0.6, repeat: Infinity }}
-      className="w-2.5 h-2.5 bg-gray-400 rounded-full"
+      className="w-1.5 h-1.5 bg-[#8696a0] rounded-full"
     />
     <motion.div
-      animate={{ y: [0, -6, 0] }}
-      transition={{ duration: 0.6, repeat: Infinity, delay: 0.1 }}
-      className="w-2.5 h-2.5 bg-gray-400 rounded-full"
+      animate={{ y: [0, -3, 0] }}
+      transition={{ duration: 0.6, repeat: Infinity, delay: 0.15 }}
+      className="w-1.5 h-1.5 bg-[#8696a0] rounded-full"
     />
     <motion.div
-      animate={{ y: [0, -6, 0] }}
-      transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }}
-      className="w-2.5 h-2.5 bg-gray-400 rounded-full"
+      animate={{ y: [0, -3, 0] }}
+      transition={{ duration: 0.6, repeat: Infinity, delay: 0.3 }}
+      className="w-1.5 h-1.5 bg-[#8696a0] rounded-full"
     />
   </div>
 );
 
 // Message bubble
-const MessageBubble = ({ message, isMe, showTime, isGrouped }) => {
+const MessageBubble = ({ message, isMe, showTime, isTopInGroup, isGrouped }) => {
   if (!message) return null;
 
   const displayTime = message.createdAt 
@@ -78,38 +78,48 @@ const MessageBubble = ({ message, isMe, showTime, isGrouped }) => {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className={`flex gap-2 items-end mb-1 ${isMe ? "justify-end" : "justify-start"}`}
+      initial={{ opacity: 0, scale: 0.95, transformOrigin: isMe ? "right bottom" : "left bottom" }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+      className={`flex flex-col relative w-full mb-1 group px-2 sm:px-4 ${isMe ? "items-end" : "items-start"}`}
     >
-      {!isMe && !isGrouped && (
-        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-agri-green/30 to-agri-green/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-agri-green">
-          {message.senderName?.charAt(0) || "?"}
-        </div>
-      )}
-      {!isMe && isGrouped && <div className="w-7" />}
-
-      <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} gap-0.5 max-w-xs`}>
-        <div
-          className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${
-            isMe
-              ? "bg-agri-green text-white rounded-br-none shadow-md shadow-agri-green/20"
-              : "bg-white dark:bg-zinc-800 text-current border border-gray-200 dark:border-zinc-700 rounded-bl-none"
-          }`}
-        >
-          {message.content || "(empty message)"}
-        </div>
-
-        {showTime && displayTime && (
-          <span className={`text-xs font-semibold text-gray-500 dark:text-gray-400 px-2 mt-0.5 ${
-            isMe ? "text-right" : "text-left"
+      <div 
+        className={`relative max-w-[85%] sm:max-w-[70%] pb-1 pt-1.5 px-3 text-[14.5px] leading-relaxed break-words shadow-sm ${
+          isMe
+            ? `bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] ${isTopInGroup ? 'rounded-l-lg rounded-br-lg rounded-tr-none' : 'rounded-lg'}`
+            : `bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] ${isTopInGroup ? 'rounded-r-lg rounded-bl-lg rounded-tl-none' : 'rounded-lg'}`
+        }`}
+      >
+        {/* Tail graphic for the top-most message of a group */}
+        {isTopInGroup && (
+          <svg viewBox="0 0 8 13" height="13" width="8" className={`absolute top-0 w-2 h-3.5 fill-current ${
+            isMe ? "text-[#d9fdd3] dark:text-[#005c4b] -right-2 right-tail" : "text-white dark:text-[#202c33] -left-2 scale-x-[-1] left-tail"
           }`}>
-            {displayTime}
-          </span>
+            <path opacity="0.13" d="M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z"></path>
+            <path fill="currentColor" d="M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0z"></path>
+          </svg>
         )}
 
-        {isMe && <MessageStatus status={message.status || "delivered"} isMe={isMe} />}
+        {/* Sender Name for Group Chats (visible on the first message of incoming grouped) */}
+        {!isMe && isTopInGroup && message.senderName && (
+          <div className="text-[13px] font-bold text-[#eb5528] dark:text-[#6bcbab] mb-0.5 tracking-tight flex items-center justify-between gap-4">
+            <span>{message.senderName}</span>
+            <span className="text-[10px] font-medium text-[#54656f] dark:text-[#8696a0] opacity-0 group-hover:opacity-100 transition">{message.senderRole || "FARMER"}</span>
+          </div>
+        )}
+
+        <div className="flex min-w-[50px] relative">
+          <span className="inline-block flex-1 mr-8 align-middle">
+            {message.content || "(empty message)"}
+          </span>
+          
+          <div className="absolute right-0 bottom-[-4px] flex items-center ml-2 h-full justify-end" style={{ alignSelf: 'flex-end', clear: 'both' }}>
+            <span className="text-[10.5px] whitespace-nowrap text-[#667781] dark:text-[#8696a0] pt-1">
+              {displayTime}
+            </span>
+            <MessageStatus status={message.status || "read"} isMe={isMe} />
+          </div>
+        </div>
       </div>
     </motion.div>
   );
@@ -125,18 +135,14 @@ const MessageGroup = ({ messages, isMe, showSeparator }) => {
   return (
     <>
       {showSeparator && <TimeSeparator date={firstMsg.createdAt} />}
-      <div className={`flex flex-col gap-0.5 mb-4 ${isMe ? "items-end" : "items-start"}`}>
-        {!isMe && firstMsg.senderName && (
-          <p className="text-xs font-bold text-gray-600 dark:text-gray-400 px-4 mb-1">
-            {firstMsg.senderName}
-          </p>
-        )}
+      <div className="mb-0.5 flex flex-col w-full">
         {messages.map((msg, idx) => (
           <MessageBubble
             key={msg.id || `msg-${idx}`}
             message={msg}
             isMe={isMe}
-            showTime={idx === messages.length - 1}
+            showTime={true}
+            isTopInGroup={idx === 0}
             isGrouped={idx > 0}
           />
         ))}
@@ -176,7 +182,7 @@ export default function ChatBubbles({
       let lastSenderId = null;
       let lastDate = null;
 
-      messages.forEach((msg, idx) => {
+      messages.forEach((msg) => {
         if (!msg || typeof msg !== 'object') return;
 
         const msgDate = msg.createdAt 
@@ -218,43 +224,54 @@ export default function ChatBubbles({
   return (
     <div
       ref={scrollRef}
-      className="flex-1 overflow-y-auto space-y-2 py-4 px-4 bg-gradient-to-b from-white/60 to-white dark:from-zinc-900/40 dark:to-zinc-950 scroll-smooth"
+      className="flex-1 overflow-y-auto space-y-1.5 py-4 bg-[#efeae2] dark:bg-[#0b141a] scroll-smooth w-full relative"
     >
-      {!Array.isArray(groupedMessages) || groupedMessages.length === 0 ? (
-        <div className="h-full flex flex-col items-center justify-center text-gray-400">
-          <p className="text-sm font-semibold">No messages yet</p>
-          <p className="text-xs">Start a conversation with {otherPersonName || "them"}</p>
-        </div>
-      ) : (
-        <>
-          <AnimatePresence>
-            {groupedMessages.map((group, idx) => {
-              if (!group || !Array.isArray(group.messages)) return null;
-              return (
-                <MessageGroup
-                  key={`group-${idx}`}
-                  messages={group.messages}
-                  isMe={group.isMe}
-                  showSeparator={group.showSeparator}
-                />
-              );
-            })}
-          </AnimatePresence>
+      {/* WhatsApp standard light abstract doodle background via CSS */}
+      <div 
+        className="absolute inset-0 z-0 opacity-[0.4] dark:opacity-5 pointer-events-none mix-blend-multiply dark:mix-blend-overlay"
+        style={{ backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")', backgroundSize: '400px' }}
+      />
+      
+      <div className="relative z-10 h-full flex flex-col">
+        {!Array.isArray(groupedMessages) || groupedMessages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="bg-[#ffeecd] dark:bg-[#182229] px-4 py-2 rounded-xl text-center shadow-sm border border-yellow-200/50 dark:border-zinc-800 text-[12px] text-[#54656f] dark:text-[#8696a0] max-w-sm">
+              <span className="block mb-1">🔒 Messages and calls are end-to-end encrypted. No one outside of this chat, not even AgroVista, can read or listen to them.</span>
+              Start a highly secure conversation with {otherPersonName || "them"}.
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col flex-1 justify-end min-h-min pb-2">
+              <AnimatePresence>
+                {groupedMessages.map((group, idx) => {
+                  if (!group || !Array.isArray(group.messages)) return null;
+                  return (
+                    <MessageGroup
+                      key={`group-${idx}`}
+                      messages={group.messages}
+                      isMe={group.isMe}
+                      showSeparator={group.showSeparator}
+                    />
+                  );
+                })}
+              </AnimatePresence>
 
-          {isTyping && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex gap-2 items-end mb-4"
-            >
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-agri-green/30 to-agri-green/10 flex items-center justify-center text-xs font-bold text-agri-green">
-                {otherPersonName?.charAt(0) || "?"}
-              </div>
-              <TypingIndicator />
-            </motion.div>
-          )}
-        </>
-      )}
+              {isTyping && (
+                <div className="flex gap-2 items-end mt-1 mb-2 px-2 sm:px-4 relative z-10 w-full justify-start items-start">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8, transformOrigin: 'left bottom' }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-white dark:bg-[#202c33] px-3.5 py-2.5 rounded-2xl rounded-tl-none shadow-sm flex items-center justify-center border border-gray-100 dark:border-zinc-800"
+                  >
+                    <TypingIndicator />
+                  </motion.div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -20,7 +20,7 @@ const generateTokens = (userId) => {
 }
 
 
-const registerUser = async ({ name, email, password, role }) => {
+const registerUser = async ({ name, email, password, role, phone, location }) => {
     const existingUser = await User.findOne({ email: email.toLowerCase() })
     if (existingUser) {
         throw new ApiError(409, 'An account with this email already exists')
@@ -32,7 +32,9 @@ const registerUser = async ({ name, email, password, role }) => {
         name,
         email: email.toLowerCase(),
         passwordHash,
-        role
+        role,
+        phone,
+        location
     })
 
     return user
@@ -77,4 +79,4 @@ const refreshAccessToken = async (refreshToken) => {
     return { accessToken, newRefreshToken }
 }
 
-module.exports = { registerUser, loginUser, refreshAccessToken }
+module.exports = { registerUser, loginUser, refreshAccessToken, generateTokens }

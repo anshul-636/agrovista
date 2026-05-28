@@ -285,7 +285,14 @@ export const apiService = {
   login: async (credentials) => {
     try {
       const res = await api.post("/auth/login", credentials);
-      return res.data;
+      const backendData = res.data;
+      // Normalize backend response: { success, data: { user, accessToken }, message }
+      // to frontend format: { success, user, token }
+      return {
+        success: backendData.success,
+        user: backendData.data?.user,
+        token: backendData.data?.accessToken
+      };
     } catch (e) {
       // Mock Login Fallback
       console.warn("[API] Login error, using mock fallback.");
@@ -308,9 +315,16 @@ export const apiService = {
   signup: async (userData) => {
     try {
       const res = await api.post("/auth/register", userData);
-      return res.data;
+      const backendData = res.data;
+      // Normalize backend response: { success, data: { user, accessToken, refreshToken }, message }
+      // to frontend format: { success, user, token }
+      return {
+        success: backendData.success,
+        user: backendData.data?.user,
+        token: backendData.data?.accessToken
+      };
     } catch (e) {
-      console.warn("[API] Signup error, using mock fallback.");
+      console.warn("[API] Signup error, using mock fallback.", e.message);
       const user = {
         id: `user-${Date.now()}`,
         email: userData.email,

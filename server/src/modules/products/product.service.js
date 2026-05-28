@@ -44,6 +44,7 @@ const getAllProducts = async (query) => {
         minPrice,
         maxPrice,
         fresh,
+        isOrganic, // Added isOrganic
         page = 1,
         limit = 12
     } = query
@@ -59,8 +60,15 @@ const getAllProducts = async (query) => {
         ]
     }
 
-    // Category filter
-    if (category) filter.category = category
+    // Category filter (convert to uppercase to match DB)
+    if (category && category !== 'All') {
+        filter.category = category.toUpperCase()
+    }
+    
+    // Organic filter
+    if (isOrganic === 'true' || isOrganic === true) {
+        filter.isOrganic = true
+    }
 
     // Price range filter
     if (minPrice || maxPrice) {

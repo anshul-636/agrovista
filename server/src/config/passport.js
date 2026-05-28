@@ -28,6 +28,7 @@ passport.use(
                 
                 // Check if user exists
                 let user = await User.findOne({ email });
+                let isNewUser = false;
                 
                 if (user) {
                     // Update Google ID if not already set
@@ -35,21 +36,22 @@ passport.use(
                         user.googleId = profile.id;
                         await user.save();
                     }
-                    return done(null, user);
+                    return done(null, { user, isNewUser: false });
                 }
                 
-                // Create new user
+                // Create new user with default BUYER role
+                // User will select role after login
                 const newUser = new User({
                     googleId: profile.id,
                     name: profile.displayName,
                     email: email,
                     avatar: profile.photos[0]?.value,
-                    role: 'BUYER', // Default role for Google signup
+                    role: 'BUYER', // Default - will be changed by user
                     isOAuthUser: true
                 });
                 
                 await newUser.save();
-                return done(null, newUser);
+                return done(null, { user: newUser, isNewUser: true });
             } catch (err) {
                 return done(err);
             }
