@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "../../../store/authStore";
 import { toast } from "sonner";
 
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { login } = useAuthStore();
@@ -60,11 +60,24 @@ export default function AuthCallbackPage() {
     }, [searchParams, login, router]);
 
     return (
+        <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-agri-green mx-auto mb-4"></div>
+            <p className="text-agri-green-dark font-semibold">Signing you in...</p>
+        </div>
+    );
+}
+
+export default function AuthCallbackPage() {
+    return (
         <div className="min-h-screen flex items-center justify-center bg-agri-cream">
-            <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-agri-green mx-auto mb-4"></div>
-                <p className="text-agri-green-dark font-semibold">Signing you in...</p>
-            </div>
+            <Suspense fallback={
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-agri-green mx-auto mb-4"></div>
+                    <p className="text-agri-green-dark font-semibold">Loading...</p>
+                </div>
+            }>
+                <AuthCallbackContent />
+            </Suspense>
         </div>
     );
 }
