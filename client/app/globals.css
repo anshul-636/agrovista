@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FAF7F2;
+  --foreground: #1D2420;
+  --card-bg: rgba(255, 255, 255, 0.7);
+  --border-color: rgba(46, 125, 50, 0.1);
+  --font-family-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-family-display: 'Outfit', sans-serif;
+}
+
+.dark {
+  --background: #0B130E;
+  --foreground: #F2F5F3;
+  --card-bg: rgba(18, 31, 22, 0.7);
+  --border-color: rgba(102, 187, 106, 0.15);
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--background);
+  font-family: var(--font-family-sans);
+  background-image: radial-gradient(rgba(46, 125, 50, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-family-display);
+}
+
+/* Glassmorphism primitives */
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.04);
+}
+
+.glass-nav {
+  background: rgba(250, 247, 242, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dark .glass-nav {
+  background: rgba(11, 19, 14, 0.75);
+}
+
+/* Leaflet Map overrides for premium dark/light mode Integration */
+.leaflet-container {
+  border-radius: 1.5rem !important;
+  border: 1px solid var(--border-color) !important;
+  font-family: var(--font-family-sans) !important;
+}
+
+.dark .leaflet-tile {
+  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3);
+}
+
+/* Custom Scrollbar for premium SaaS feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(46, 125, 50, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(46, 125, 50, 0.4);
+}
+
+/* Custom visual glow classes */
+.agri-glow {
+  box-shadow: 0 0 20px 0 rgba(46, 125, 50, 0.15);
+}
+
+.dark .agri-glow {
+  box-shadow: 0 0 25px 0 rgba(102, 187, 106, 0.1);
+}
+
