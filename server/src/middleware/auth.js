@@ -19,8 +19,6 @@ const verifyToken = asyncHandler(async (req, res, next) => {
         throw new ApiError(401, 'Unauthorized - invalid or expired token')
     }
 
-    // Fetch user from MongoDB
-    // .select('+passwordHash') would include it — without +, it stays excluded
     const user = await User.findById(decoded.userId).select('-passwordHash -__v')
 
     if (!user) {

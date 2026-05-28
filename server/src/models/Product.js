@@ -4,7 +4,7 @@ const productSchema = new mongoose.Schema(
     {
         farmer: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',        // ref tells Mongoose which model to populate from
+            ref: 'User',
             required: true
         },
         name: {
@@ -28,7 +28,7 @@ const productSchema = new mongoose.Schema(
         },
         unit: {
             type: String,
-            required: true   // "kg", "dozen", "bundle"
+            required: true
         },
         quantity: {
             type: Number,
@@ -36,7 +36,7 @@ const productSchema = new mongoose.Schema(
             min: [0, 'Quantity cannot be negative']
         },
         images: {
-            type: [String],   // Array of Cloudinary URLs
+            type: [String],
             default: []
         },
         isOrganic: {
@@ -56,7 +56,7 @@ const productSchema = new mongoose.Schema(
 )
 
 // Index for search and filtering
-productSchema.index({ name: 'text', description: 'text' })  // text search
+productSchema.index({ name: 'text', description: 'text' })
 productSchema.index({ category: 1 })
 productSchema.index({ price: 1 })
 productSchema.index({ farmer: 1 })

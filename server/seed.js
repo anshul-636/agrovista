@@ -1,15 +1,3 @@
-/**
- * AgroVista Seed Script — Day 6
- * Run: node seed.js
- *
- * Creates:
- *   - 5 Farmer accounts
- *   - 3 Buyer accounts
- *   - 20 Products (all categories, real Cloudinary images)
- *   - 2 LIVE auctions + 1 UPCOMING auction
- *   - Completed orders with reviews
- */
-
 require('dotenv').config()
 const mongoose = require('mongoose')
 const bcrypt = require('bcryptjs')
@@ -27,22 +15,19 @@ const Order = require('./src/models/Order')
 const Review = require('./src/models/Review')
 const Auction = require('./src/models/Auction')
 
-// ── Helpers ──────────────────────────────────
+
 const hash = (p) => bcrypt.hash(p, 10)
 const log = (msg) => console.log('  →', msg)
 
-// Upload an image URL to Cloudinary and return the secure_url
 const uploadImage = async (url, folder = 'agrovista/products') => {
     try {
         const result = await cloudinary.uploader.upload(url, { folder })
         return result.secure_url
     } catch {
-        // Fallback placeholder if URL fails
         return 'https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg'
     }
 }
 
-// ── Seed Data ─────────────────────────────────
 
 const FARMERS = [
     { name: 'Ramesh Kumar',  email: 'ramesh@farm.com',  phone: '9876543210', location: 'Pune, Maharashtra',    bio: 'Organic farmer for 15 years, specializing in vegetables.' },
@@ -58,7 +43,6 @@ const BUYERS = [
     { name: 'Sneha Gupta',  email: 'sneha@buyer.com', phone: '9123456782', location: 'Bangalore, Karnataka' },
 ]
 
-// Product images from free Unsplash sources (reliable URLs)
 const PRODUCT_IMAGES = {
     VEGETABLES: [
         'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=800',
@@ -85,13 +69,12 @@ const PRODUCT_IMAGES = {
     ],
 }
 
-// ── Main Seed Function ─────────────────────────
+
 const seed = async () => {
     try {
         await mongoose.connect(process.env.MONGODB_URI)
         log('Connected to MongoDB')
 
-        // ── WIPE EXISTING DATA ────────────────
         log('Clearing existing data...')
         await Promise.all([
             User.deleteMany({}),
@@ -102,7 +85,6 @@ const seed = async () => {
         ])
         log('Existing data cleared')
 
-        // ── CREATE USERS ──────────────────────
         log('Creating farmers...')
         const password = await hash('Test@1234')
 
@@ -117,35 +99,27 @@ const seed = async () => {
 
         log(`Created ${farmers.length} farmers and ${buyers.length} buyers`)
 
-        // ── UPLOAD IMAGES & CREATE PRODUCTS ───
         log('Uploading product images to Cloudinary (this may take 30-60 seconds)...')
-
-        const productData = [
-            // Farmer 0 (Ramesh) — Vegetables
             { name: 'Fresh Tomatoes',       category: 'VEGETABLES', price: 40,  unit: 'kg',     quantity: 500, isOrganic: true,  location: 'Pune',     farmerIdx: 0, imgCategory: 'VEGETABLES', imgIdx: 0 },
             { name: 'Green Spinach',         category: 'VEGETABLES', price: 25,  unit: 'bundle', quantity: 200, isOrganic: true,  location: 'Pune',     farmerIdx: 0, imgCategory: 'VEGETABLES', imgIdx: 1 },
             { name: 'Brinjal (Eggplant)',   category: 'VEGETABLES', price: 35,  unit: 'kg',     quantity: 150, isOrganic: false, location: 'Pune',     farmerIdx: 0, imgCategory: 'VEGETABLES', imgIdx: 2 },
             { name: 'Lady Finger (Okra)',   category: 'VEGETABLES', price: 50,  unit: 'kg',     quantity: 120, isOrganic: true,  location: 'Pune',     farmerIdx: 0, imgCategory: 'VEGETABLES', imgIdx: 3 },
 
-            // Farmer 1 (Anita) — Fruits
             { name: 'Alphonso Mangoes',     category: 'FRUITS',     price: 300, unit: 'dozen',  quantity: 100, isOrganic: false, location: 'Nashik',   farmerIdx: 1, imgCategory: 'FRUITS',     imgIdx: 0 },
             { name: 'Thompson Grapes',      category: 'FRUITS',     price: 80,  unit: 'kg',     quantity: 300, isOrganic: false, location: 'Nashik',   farmerIdx: 1, imgCategory: 'FRUITS',     imgIdx: 1 },
             { name: 'Sweet Pomegranate',    category: 'FRUITS',     price: 120, unit: 'kg',     quantity: 200, isOrganic: true,  location: 'Nashik',   farmerIdx: 1, imgCategory: 'FRUITS',     imgIdx: 2 },
             { name: 'Fresh Strawberries',   category: 'FRUITS',     price: 150, unit: 'kg',     quantity: 80,  isOrganic: true,  location: 'Nashik',   farmerIdx: 1, imgCategory: 'FRUITS',     imgIdx: 0 },
 
-            // Farmer 2 (Suresh) — Grains
             { name: 'Basmati Rice',         category: 'GRAINS',     price: 90,  unit: 'kg',     quantity: 1000, isOrganic: false, location: 'Lucknow', farmerIdx: 2, imgCategory: 'GRAINS',    imgIdx: 0 },
             { name: 'Whole Wheat Flour',    category: 'GRAINS',     price: 45,  unit: 'kg',     quantity: 800,  isOrganic: false, location: 'Lucknow', farmerIdx: 2, imgCategory: 'GRAINS',    imgIdx: 1 },
             { name: 'Yellow Moong Dal',     category: 'GRAINS',     price: 110, unit: 'kg',     quantity: 500,  isOrganic: true,  location: 'Lucknow', farmerIdx: 2, imgCategory: 'GRAINS',    imgIdx: 0 },
             { name: 'Masoor Dal (Red)',     category: 'GRAINS',     price: 95,  unit: 'kg',     quantity: 400,  isOrganic: false, location: 'Lucknow', farmerIdx: 2, imgCategory: 'GRAINS',    imgIdx: 1 },
 
-            // Farmer 3 (Kavitha) — Dairy + Herbs
             { name: 'Fresh Cow Milk',       category: 'DAIRY',      price: 55,  unit: 'litre',  quantity: 200, isOrganic: true,  location: 'Kerala',   farmerIdx: 3, imgCategory: 'DAIRY',     imgIdx: 0 },
             { name: 'Homemade Cow Ghee',    category: 'DAIRY',      price: 600, unit: 'kg',     quantity: 50,  isOrganic: true,  location: 'Kerala',   farmerIdx: 3, imgCategory: 'DAIRY',     imgIdx: 1 },
             { name: 'Tulsi (Holy Basil)',   category: 'HERBS',      price: 30,  unit: 'bundle', quantity: 150, isOrganic: true,  location: 'Kerala',  farmerIdx: 3,  imgCategory: 'HERBS',     imgIdx: 0 },
             { name: 'Fresh Curry Leaves',   category: 'HERBS',      price: 20,  unit: 'bundle', quantity: 200, isOrganic: true,  location: 'Kerala',  farmerIdx: 3,  imgCategory: 'HERBS',     imgIdx: 1 },
 
-            // Farmer 4 (Mohan) — Grains + Vegetables
             { name: 'Mustard Seeds',        category: 'GRAINS',     price: 75,  unit: 'kg',     quantity: 600, isOrganic: false, location: 'Punjab',   farmerIdx: 4, imgCategory: 'GRAINS',    imgIdx: 0 },
             { name: 'Golden Turmeric',      category: 'HERBS',      price: 200, unit: 'kg',     quantity: 100, isOrganic: true,  location: 'Punjab',   farmerIdx: 4, imgCategory: 'HERBS',     imgIdx: 0 },
             { name: 'Red Onions',           category: 'VEGETABLES', price: 30,  unit: 'kg',     quantity: 700, isOrganic: false, location: 'Punjab',   farmerIdx: 4, imgCategory: 'VEGETABLES', imgIdx: 0 },
@@ -176,11 +150,9 @@ const seed = async () => {
             log(`Product ${i + 1}/20 created: ${p.name}`)
         }
 
-        // ── CREATE AUCTIONS ───────────────────
         log('Creating auctions...')
         const now = new Date()
 
-        // Upload auction images
         const auctionImg1 = await uploadImage(PRODUCT_IMAGES.FRUITS[0], 'agrovista/auctions')
         const auctionImg2 = await uploadImage(PRODUCT_IMAGES.GRAINS[0], 'agrovista/auctions')
         const auctionImg3 = await uploadImage(PRODUCT_IMAGES.VEGETABLES[0], 'agrovista/auctions')
@@ -231,7 +203,6 @@ const seed = async () => {
         ])
         log('Created 2 LIVE auctions + 1 UPCOMING auction')
 
-        // ── CREATE COMPLETED ORDERS + REVIEWS ─
         log('Creating completed orders and reviews...')
 
         const orderPairs = [
@@ -268,7 +239,6 @@ const seed = async () => {
                 deliveryAddress: address
             })
 
-            // Create a review for each delivered order
             const rev = REVIEWS[i]
             await Review.create({
                 giver: buyers[buyerIdx]._id,
@@ -280,7 +250,6 @@ const seed = async () => {
             log(`Order + Review ${i + 1}/6 created`)
         }
 
-        // ── SUMMARY ──────────────────────────
         console.log('\n  ✅  Seed complete!\n')
         console.log('  📊  Summary:')
         console.log(`     Farmers : ${farmers.length}`)

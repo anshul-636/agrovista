@@ -4,7 +4,6 @@ const { getAll, readOne, readAll } = require('./notification.controller')
 
 const router = express.Router()
 
-// All notification routes require login
 router.use(verifyToken)
 
 router.get('/', getAll)

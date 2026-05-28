@@ -9,7 +9,6 @@ const analyticsRoutes = require('./modules/analytics/analytics.routes')
 const auctionRoutes = require('./modules/auctions/auction.routes')
 const chatRoutes = require('./modules/chat/chat.routes')
 const wishlistRoutes = require('./modules/wishlist/wishlist.routes')
-// Day 5
 const aiRoutes = require('./modules/ai/ai.routes')
 const reviewRoutes = require('./modules/reviews/review.routes')
 const notificationRoutes = require('./modules/notifications/notification.routes')
@@ -17,7 +16,6 @@ const userRoutes = require('./modules/users/user.routes')
 
 const app = express()
 
-// ── Middlewares ──────────────────────────────
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
@@ -26,7 +24,7 @@ app.use(cors({
     credentials: true
 }))
 
-// ── Health Check ─────────────────────────────
+
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -35,7 +33,6 @@ app.get('/health', (req, res) => {
     })
 })
 
-// ── Routes ───────────────────────────────────
 app.get("/", (req, res) => {
     res.send("Agrovista backend running");
 });
@@ -46,13 +43,12 @@ app.use('/api/analytics', analyticsRoutes)
 app.use('/api/auctions', auctionRoutes)
 app.use('/api/chat', chatRoutes)
 app.use('/api/wishlist', wishlistRoutes)
-// Day 5
 app.use('/api/ai', aiRoutes)
 app.use('/api/reviews', reviewRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/users', userRoutes)
 
-// ── 404 Handler ──────────────────────────────
+
 app.use((req, res) => {
     res.status(404).json({
         success: false,
@@ -60,9 +56,8 @@ app.use((req, res) => {
     })
 })
 
-// ── Global Error Handler ──────────────────────
-// Must have exactly 4 params for Express to recognize it as error handler
 app.use((err, req, res, next) => {
+    // Must have exactly 4 params for Express to recognize it as error handler
     console.error('[Error]', err.statusCode || 500, err.message)
 
     // Mongoose validation (e.g. required field missing)

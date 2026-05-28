@@ -12,7 +12,6 @@ const {
 
 const router = express.Router()
 
-// All order routes require authentication
 router.use(verifyToken)
 
 // IMPORTANT: specific routes before dynamic /:id routes

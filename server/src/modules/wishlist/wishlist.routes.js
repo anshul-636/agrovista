@@ -5,7 +5,6 @@ const { add, remove, getAll, check } = require('./wishlist.controller')
 
 const router = express.Router()
 
-// All wishlist routes require buyer auth
 router.use(verifyToken, authorize('BUYER'))
 
 router.get('/', getAll)

@@ -8,7 +8,7 @@ const startAuctionCron = () => {
         try {
             const now = new Date()
 
-            // ── Start UPCOMING auctions that have reached their startTime ──
+            // Start UPCOMING auctions that have reached their startTime
             const toStart = await Auction.find({
                 status: 'UPCOMING',
                 startTime: { $lte: now }
@@ -27,7 +27,7 @@ const startAuctionCron = () => {
                 } catch (e) { }
             }
 
-            // ── Close LIVE auctions that have passed their endTime ──
+            // Close LIVE auctions that have passed their endTime
             const toClose = await Auction.find({
                 status: 'LIVE',
                 endTime: { $lte: now }
@@ -47,7 +47,6 @@ const startAuctionCron = () => {
                 console.log('Auction ended:', auction.productName,
                     highestBid ? 'Winner: ' + highestBid.bidder.name : 'No bids')
 
-                // Announce winner to everyone in the auction room
                 try {
                     const { getIO } = require('../config/socket')
                     getIO().to('auction:' + auction._id.toString()).emit('auction:ended', {

@@ -7,7 +7,6 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 })
 
-// Log on startup so we can verify env vars are loaded
 console.log('  ☁️   Cloudinary cloud_name:', process.env.CLOUDINARY_CLOUD_NAME || '❌ MISSING')
 console.log('  ☁️   Cloudinary api_key   :', process.env.CLOUDINARY_API_KEY ? 'Present ✅' : '❌ MISSING')
 console.log('  ☁️   Cloudinary api_secret:', process.env.CLOUDINARY_API_SECRET ? 'Present ✅' : '❌ MISSING')
@@ -36,8 +35,6 @@ const uploadToCloudinary = (buffer, folder = 'agrovista/products') => {
     })
 }
 
-// Helper: upload multiple files from req.files to Cloudinary
-// Returns array of secure_url strings
 const uploadFiles = async (files, folder = 'agrovista/products') => {
     const results = await Promise.all(
         files.map(file => uploadToCloudinary(file.buffer, folder))

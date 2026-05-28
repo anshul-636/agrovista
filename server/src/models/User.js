@@ -31,7 +31,7 @@ const userSchema = new mongoose.Schema(
         bio: String
     },
     {
-        timestamps: true   // Adds createdAt and updatedAt automatically
+        timestamps: true
     }
 )
 
