@@ -86,9 +86,9 @@ function BuyerDashboardContent() {
     return null;
   }
 
-  const products = productsRes?.data || [];
-  const orders = ordersRes?.data || [];
-  const auctions = auctionsRes?.data || [];
+  const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
+  const orders = Array.isArray(ordersRes?.data) ? ordersRes.data : [];
+  const auctions = Array.isArray(auctionsRes?.data) ? auctionsRes.data : [];
 
   // Watchlist simulation
   const watchlist = products.filter(p => p.isOrganic).slice(0, 3);

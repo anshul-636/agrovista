@@ -62,6 +62,7 @@ export default function Header() {
                 <Link
                   key={link.href}
                   href={link.href}
+                  prefetch={true}
                   className={`text-sm font-semibold flex items-center gap-1.5 transition-all hover:text-agri-green ${
                     isActive
                       ? "text-agri-green dark:text-agri-green-light font-bold"

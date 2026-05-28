@@ -1,8 +1,11 @@
 const express = require('express')
 const cors = require('cors')
 const cookieParser = require('cookie-parser')
+const session = require('express-session')
+const passport = require('./config/passport')
 
 const authRoutes = require('./modules/auth/auth.routes')
+const oauthRoutes = require('./modules/auth/oauth.routes')
 const productRoutes = require('./modules/products/product.routes')
 const orderRoutes = require('./modules/orders/order.routes')
 const analyticsRoutes = require('./modules/analytics/analytics.routes')
@@ -19,6 +22,14 @@ const app = express()
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'agrovista-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: process.env.NODE_ENV === 'production' }
+}))
+app.use(passport.initialize())
+app.use(passport.session())
 app.use(cors({
     origin: process.env.CLIENT_URL || 'http://localhost:3000',
     credentials: true
@@ -37,6 +48,7 @@ app.get("/", (req, res) => {
     res.send("Agrovista backend running");
 });
 app.use('/api/auth', authRoutes)
+app.use('/api/auth', oauthRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/orders', orderRoutes)
 app.use('/api/analytics', analyticsRoutes)

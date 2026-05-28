@@ -11,8 +11,11 @@ export default function AppProviders({ children }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000,
+            staleTime: 1000 * 60 * 30, // 30 minutes - data stays fresh longer
+            gcTime: 1000 * 60 * 60,    // 1 hour - keep data in cache
             refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
+            retry: 1,
           },
         },
       })

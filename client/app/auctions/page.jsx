@@ -112,7 +112,11 @@ export default function AuctionsListingPage() {
                 <div className="space-y-4">
                   {/* Image & Status banner */}
                   <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-agri-green/10">
-                    <img src={auc.images[0]} alt={auc.productName} className="absolute inset-0 w-full h-full object-cover" />
+                    <img 
+                      src={auc.images?.[0] || auc.image || "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&q=80&w=600"} 
+                      alt={auc.productName} 
+                      className="absolute inset-0 w-full h-full object-cover" 
+                    />
                     <div className="absolute top-3 left-3 bg-red-500 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow">
                       <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
                       LIVE BIDDING

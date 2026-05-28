@@ -17,8 +17,8 @@ const userSchema = new mongoose.Schema(
         },
         passwordHash: {
             type: String,
-            required: true,
-            select: false   // NEVER returned in queries by default — must be explicitly selected
+            required: false,  // Not required at schema level
+            select: false     // NEVER returned in queries by default — must be explicitly selected
         },
         role: {
             type: String,
@@ -28,7 +28,12 @@ const userSchema = new mongoose.Schema(
         phone: String,
         location: String,
         avatar: String,
-        bio: String
+        bio: String,
+        googleId: String,
+        isOAuthUser: {
+            type: Boolean,
+            default: false
+        }
     },
     {
         timestamps: true

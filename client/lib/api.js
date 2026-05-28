@@ -4,10 +4,19 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 5000,
+  timeout: 15000, // Increased from 5000ms to 15000ms (15 seconds)
+  headers: {
+    "Content-Type": "application/json",
+  }
 });
 
-// Attach JWT access token to headers
+// Retry logic for failed requests
+const retryConfig = {
+  maxRetries: 2,
+  retryDelay: 500,
+};
+
+// Request interceptor with retry logic
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== "undefined") {
@@ -16,9 +25,29 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
+    config.retryCount = config.retryCount || 0; // Initialize retry count
     return config;
   },
   (error) => Promise.reject(error)
+);
+
+// Response interceptor with automatic retry
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error.config;
+    
+    // Retry only on network errors or 5xx server errors
+    if (config && config.retryCount < retryConfig.maxRetries) {
+      if (!error.response || (error.response && error.response.status >= 500)) {
+        config.retryCount += 1;
+        await new Promise(resolve => setTimeout(resolve, retryConfig.retryDelay));
+        return api(config);
+      }
+    }
+    
+    return Promise.reject(error);
+  }
 );
 
 // MOCK DATABASES (In-Memory Fallback)

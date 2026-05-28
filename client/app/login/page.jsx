@@ -53,21 +53,9 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    toast.success("Redirecting to Google OAuth...", { icon: "🌐" });
-    setTimeout(() => {
-      // Mock OAuth success
-      const mockUser = {
-        id: "buyer-google-1",
-        email: email || "google_buyer@agrovista.com",
-        name: "Google Buyer Partner",
-        role: "BUYER",
-        avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-        location: "Delhi, India"
-      };
-      login(mockUser, "mock-google-token-xyz");
-      toast.success("Logged in successfully with Google!");
-      router.push("/dashboard/buyer");
-    }, 1500);
+    // Redirect to backend Google OAuth endpoint
+    const backendURL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+    window.location.href = `${backendURL}/api/auth/google`;
   };
 
   return (

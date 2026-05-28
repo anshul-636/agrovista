@@ -87,6 +87,12 @@ export default function SignupPage() {
     }
   };
 
+  const handleGoogleSignup = () => {
+    // Redirect to backend Google OAuth endpoint
+    const backendURL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+    window.location.href = `${backendURL}/api/auth/google`;
+  };
+
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-12 bg-agri-cream dark:bg-zinc-950">
       {/* Left Column: Form Section */}
@@ -257,6 +263,40 @@ export default function SignupPage() {
                 {isLoading ? "Creating Account..." : "Create Account"}
                 <UserPlus className="w-4 h-4" />
               </Button>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 my-6">
+                <div className="h-px bg-agri-green/10 flex-1" />
+                <span className="text-xs text-agri-brown/60 uppercase">or sign up with</span>
+                <div className="h-px bg-agri-green/10 flex-1" />
+              </div>
+
+              {/* Google OAuth Button */}
+              <button
+                type="button"
+                onClick={handleGoogleSignup}
+                className="w-full py-3 rounded-2xl border border-agri-green/15 bg-white hover:bg-agri-cream/30 text-agri-green-dark font-bold text-sm flex items-center justify-center gap-2 transition"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.68 1.54 14.98 1 12 1 7.35 1 3.37 3.65 1.39 7.56l3.85 2.99c.92-2.76 3.49-4.51 6.76-4.51z"
+                  />
+                  <path
+                    fill="#4285F4"
+                    d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.4 3.57l3.73 2.89c2.18-2.01 3.7-4.97 3.7-8.61z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.24 14.81c-.24-.72-.38-1.49-.38-2.31s.14-1.59.38-2.31L1.39 7.2C.5 8.98 0 10.94 0 13s.5 4.02 1.39 5.8l3.85-2.99z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.73-2.89c-1.03.69-2.35 1.1-4.23 1.1-3.27 0-5.84-1.75-6.76-4.51l-3.85 2.99C3.37 20.35 7.35 23 12 23z"
+                  />
+                </svg>
+                Google Partner Account
+              </button>
             </form>
 
             <p className="text-center text-xs font-semibold text-agri-brown mt-6">

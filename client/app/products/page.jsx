@@ -23,7 +23,7 @@ export default function ProductListingPage() {
     queryFn: () => apiService.getProducts({ search, category, isOrganic }),
   });
 
-  const products = productsRes?.data || [];
+  const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
 
   // Client side sorting
   const sortedProducts = [...products].sort((a, b) => {
