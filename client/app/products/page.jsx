@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, SlidersHorizontal, MapPin, Star, ShieldCheck, Heart, Tractor, ArrowUpDown } from "lucide-react";
 import Header from "../../components/shared/Header";
@@ -13,6 +13,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 export default function ProductListingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-agri-cream dark:bg-zinc-950" />}>
+      <ProductListingContent />
+    </Suspense>
+  );
+}
+
+function ProductListingContent() {
   const searchParams = useSearchParams();
   const farmerFilter = searchParams ? searchParams.get("farmer") : null;
 
