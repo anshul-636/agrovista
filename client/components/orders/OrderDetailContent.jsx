@@ -29,11 +29,15 @@ export default function OrderDetailContent() {
   const [timeline, setTimeline] = useState([]);
   const [chatMessages, setChatMessages] = useState([]);
   const [typedMessage, setTypedMessage] = useState("");
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isSending, setIsSending] = useState(false);
   const [onlineStatus, setOnlineStatus] = useState("Online");
   const [mounted, setMounted] = useState(false);
 
   const socketRef = useRef(null);
   const chatScrollRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   // Mark component as mounted to prevent hydration mismatch
   useEffect(() => {
@@ -149,9 +153,9 @@ export default function OrderDetailContent() {
   const updateStatusMutation = useMutation({
     mutationFn: (newStatus) => apiService.updateOrderStatus(id, newStatus),
     onSuccess: (res) => {
-      if (res.success) {
+      if (res.success && res.data) {
         setStatus(res.data.status);
-        setTimeline(res.data.timeline);
+        setTimeline(res.data.timeline || [{ status: res.data.status, title: "Status Updated", timestamp: new Date().toISOString() }]);
         queryClient.invalidateQueries(["order", id]);
         queryClient.invalidateQueries(["farmerOrders"]);
         toast.success(`Shipment status progressed to ${res.data.status}!`);
@@ -160,12 +164,33 @@ export default function OrderDetailContent() {
         if (socketRef.current) {
           socketRef.current.emit("order:updated", { orderId: id, status: res.data.status });
         }
+      } else {
+        toast.error(res.error || "Failed to update status");
+      }
+    }
+  });
+
+  // Verify Delivery mutation (Buyer only)
+  const verifyDeliveryMutation = useMutation({
+    mutationFn: () => apiService.verifyOrderDelivery(id),
+    onSuccess: (res) => {
+      if (res.success && res.data) {
+        setStatus(res.data.status);
+        setTimeline(res.data.timeline || [{ status: res.data.status, title: "Status Updated", timestamp: new Date().toISOString() }]);
+        queryClient.invalidateQueries(["order", id]);
+        toast.success("Delivery verified! Escrow funds released.");
+
+        if (socketRef.current) {
+          socketRef.current.emit("order:updated", { orderId: id, status: res.data.status });
+        }
+      } else {
+        toast.error(res.error || "Verification failed");
       }
     }
   });
 
   const handleProgressStatus = () => {
-    const statusSequence = ["PENDING", "ACCEPTED", "PACKED", "DISPATCHED", "DELIVERED"];
+    const statusSequence = ["PENDING", "ACCEPTED", "PACKED", "DISPATCHED"];
     const currentIdx = statusSequence.indexOf(status);
     if (currentIdx !== -1 && currentIdx < statusSequence.length - 1) {
       const nextStatus = statusSequence[currentIdx + 1];
@@ -173,19 +198,57 @@ export default function OrderDetailContent() {
     }
   };
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!typedMessage.trim() || !socketRef.current) return;
+    if ((!typedMessage.trim() && !imageFile) || isSending) return;
 
-    socketRef.current.emit("send:message", {
+    setIsSending(true);
+
+    // Optimistic UI: add it immediately
+    const optimisticMsg = {
+      id: `optimistic-${Date.now()}`,
       orderId: id,
+      senderId: user?.id || 'me',
+      senderName: user?.name || 'You',
+      senderRole: user?.role || 'BUYER',
       content: typedMessage.trim(),
-      senderId: user.id,
-      senderName: user.name,
-      senderRole: user.role
-    });
-
+      imageUrl: imagePreview,
+      createdAt: new Date().toISOString(),
+      status: 'sending'
+    };
+    setChatMessages(prev => [...prev, optimisticMsg]);
     setTypedMessage("");
+    setImageFile(null);
+    setImagePreview(null);
+
+    try {
+      const res = await apiService.sendMessage(id, optimisticMsg.content, imageFile);
+      if (res.success && res.data) {
+        // Replace optimistic with confirmed message
+        setChatMessages(prev => prev.map(m =>
+          m.id === optimisticMsg.id ? { ...res.data, status: 'sent' } : m
+        ));
+      }
+    } catch (err) {
+      console.error('Send failed:', err);
+      // Mark as failed
+      setChatMessages(prev => prev.map(m =>
+        m.id === optimisticMsg.id ? { ...m, status: 'failed' } : m
+      ));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select a valid image file.');
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
   };
 
   // Only render once mounted to avoid hydration issues
@@ -250,7 +313,7 @@ export default function OrderDetailContent() {
 
         {/* Order Title */}
         <div className="mb-8">
-          <h1 className="text-4xl font-black text-agri-green-dark mb-2">Order # {order.orderId}</h1>
+          <h1 className="text-4xl font-black text-agri-green-dark mb-2">Order # {order.orderId || order.id}</h1>
           <p className="text-agri-brown">
             Item: {order.productName} • Quantity: {order.quantity}
           </p>
@@ -269,11 +332,11 @@ export default function OrderDetailContent() {
                 </div>
               </div>
               <div className="p-6 space-y-6">
-                {timeline.map((event, idx) => (
+                {(timeline || []).map((event, idx) => (
                   <div key={idx} className="flex gap-4 relative">
                     <div className="flex flex-col items-center">
                       <div className="w-3 h-3 rounded-full bg-agri-green ring-2 ring-agri-green/20" />
-                      {idx < timeline.length - 1 && (
+                      {idx < (timeline || []).length - 1 && (
                         <div className="w-0.5 h-16 bg-gradient-to-b from-agri-green to-agri-green/20 my-2" />
                       )}
                     </div>
@@ -286,12 +349,24 @@ export default function OrderDetailContent() {
                 ))}
 
                 {/* Progress Button */}
-                {user?.role === "FARMER" && status !== "DELIVERED" && (
+                {user?.role === "FARMER" && status !== "DELIVERED" && status !== "DISPATCHED" && (
                   <button
                     onClick={handleProgressStatus}
-                    className="w-full mt-6 px-4 py-3 bg-agri-green text-white rounded-xl font-bold hover:bg-agri-green-hover transition"
+                    className="w-full mt-6 px-4 py-3 bg-agri-green text-white rounded-xl font-bold hover:bg-agri-green-hover transition disabled:opacity-50"
+                    disabled={updateStatusMutation.isLoading}
                   >
-                    Progress to Next Step
+                    {updateStatusMutation.isLoading ? "Updating..." : "Progress to Next Step"}
+                  </button>
+                )}
+
+                {/* Buyer Verify Button */}
+                {user?.role === "BUYER" && status === "DISPATCHED" && (
+                  <button
+                    onClick={() => verifyDeliveryMutation.mutate()}
+                    className="w-full mt-6 px-4 py-3 bg-agri-green text-white rounded-xl font-bold hover:bg-agri-green-hover transition shadow-lg ring-4 ring-agri-green/20"
+                    disabled={verifyDeliveryMutation.isLoading}
+                  >
+                    {verifyDeliveryMutation.isLoading ? "Verifying..." : "Verify Delivery & Release Funds"}
                   </button>
                 )}
               </div>
@@ -307,14 +382,14 @@ export default function OrderDetailContent() {
                   <p className="text-xs text-agri-brown font-bold mb-2 uppercase">Fulfillment Address</p>
                   <div className="flex gap-2">
                     <MapPin className="w-4 h-4 text-agri-green shrink-0 mt-0.5" />
-                    <p className="text-sm font-semibold text-current">{order.shippingAddress}</p>
+                    <p className="text-sm font-semibold text-current">{order.shippingAddress || order.deliveryAddress}</p>
                   </div>
                 </div>
                 <div>
                   <p className="text-xs text-agri-brown font-bold mb-2 uppercase">Financial Escrow Safety</p>
                   <div className="flex gap-2">
                     <UserCheck className="w-4 h-4 text-agri-green shrink-0 mt-0.5" />
-                    <p className="text-sm font-semibold text-current">₹{order.totalAmount.toLocaleString()} locked. Released upon buyer delivery verification.</p>
+                    <p className="text-sm font-semibold text-current">₹{order.totalAmount?.toLocaleString()} locked. Released upon buyer delivery verification.</p>
                   </div>
                 </div>
               </div>
@@ -328,7 +403,7 @@ export default function OrderDetailContent() {
               <div className="p-4 border-b border-agri-green/5 bg-gradient-to-r from-agri-green/5 to-agri-green/2 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-agri-green/40 to-agri-green/20 flex items-center justify-center font-bold text-base text-agri-green">
-                    {otherPersonName.charAt(0)}
+                    {otherPersonName?.charAt(0) || "U"}
                   </div>
                   <div>
                     <h4 className="text-sm font-extrabold text-agri-green-dark dark:text-agri-green-light">
@@ -351,20 +426,65 @@ export default function OrderDetailContent() {
               />
 
               {/* Input form */}
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-agri-green/5 bg-white dark:bg-zinc-950 flex gap-2">
-                <input
-                  type="text"
-                  value={typedMessage}
-                  onChange={(e) => setTypedMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 px-4 py-3 rounded-full border text-sm bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/30 focus:border-agri-green transition placeholder-gray-400"
-                />
-                <Button
-                  type="submit"
-                  className="p-3 rounded-full bg-agri-green text-white hover:bg-agri-green-dark shadow-md transition"
-                >
-                  <Send className="w-5 h-5" />
-                </Button>
+              <form onSubmit={handleSendMessage} className="border-t border-agri-green/5 bg-white dark:bg-zinc-950">
+                {/* Image preview strip */}
+                {imagePreview && (
+                  <div className="px-4 pt-3 pb-2 flex items-center gap-3">
+                    <div className="relative">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="h-16 w-16 object-cover rounded-xl border-2 border-agri-green/30"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setImageFile(null); setImagePreview(null); }}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center font-bold hover:bg-red-600"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <span className="text-xs text-agri-brown">{imageFile?.name}</span>
+                  </div>
+                )}
+                <div className="p-3 flex items-center gap-2">
+                  {/* Hidden file input */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageSelect}
+                  />
+                  {/* Gallery button */}
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="w-10 h-10 flex items-center justify-center rounded-full bg-agri-green/10 text-agri-green hover:bg-agri-green/20 transition flex-shrink-0"
+                    title="Attach image"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </button>
+                  <input
+                    type="text"
+                    value={typedMessage}
+                    onChange={(e) => setTypedMessage(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 px-4 py-2.5 rounded-full border text-sm bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/30 focus:border-agri-green transition placeholder-gray-400"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={isSending || (!typedMessage.trim() && !imageFile)}
+                    className="w-10 h-10 flex items-center justify-center rounded-full bg-agri-green text-white hover:bg-agri-green-dark shadow-md transition disabled:opacity-50 flex-shrink-0"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
               </form>
             </Card>
           </div>

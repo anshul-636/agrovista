@@ -29,7 +29,18 @@ export default function ProductDetailPage() {
     queryFn: () => apiService.getProductById(id),
   });
 
-  const product = detailRes?.data || null;
+  let product = detailRes?.data || null;
+  if (product) {
+    product = {
+      ...product,
+      id: product.id || product._id,
+      farmerName: product.farmerName || product.farmer?.name || "Unknown",
+      farmerLocation: product.farmerLocation || product.farmer?.location || product.location || "India",
+      farmerTrustScore: product.farmerTrustScore || product.farmer?.trustScore || 90,
+      reviews: product.reviews || [],
+      images: product.images && product.images.length > 0 ? product.images : ["https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"],
+    };
+  }
 
   // Order mutation
   const createOrderMutation = useMutation({

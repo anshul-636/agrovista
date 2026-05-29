@@ -144,6 +144,11 @@ const updateOrderStatus = async (orderId, farmerId, newStatus) => {
 
     validateTransition(order.status, newStatus)
 
+    // Block farmer from progressing to DELIVERED
+    if (newStatus === 'DELIVERED') {
+        throw new ApiError(403, 'Only the buyer can verify and confirm delivery')
+    }
+
     order.status = newStatus
     await order.save()
 
@@ -168,6 +173,51 @@ const updateOrderStatus = async (orderId, farmerId, newStatus) => {
 
     return order
 }
+
+// ──────────────────────────────────────────────
+// VERIFY DELIVERY (BUYER)
+// ──────────────────────────────────────────────
+const verifyOrderDelivery = async (orderId, buyerId) => {
+    const order = await Order.findById(orderId)
+
+    if (!order) throw new ApiError(404, 'Order not found')
+
+    if (order.buyer.toString() !== buyerId.toString()) {
+        throw new ApiError(403, 'You can only verify your own orders')
+    }
+
+    if (order.status !== 'DISPATCHED') {
+        throw new ApiError(400, 'Order must be DISPATCHED before you can verify delivery')
+    }
+
+    validateTransition(order.status, 'DELIVERED')
+
+    order.status = 'DELIVERED'
+    await order.save()
+
+    await order.populate([
+        { path: 'buyer', select: 'name email' },
+        { path: 'farmer', select: 'name email' },
+        { path: 'product', select: 'name images' }
+    ])
+
+    // Real-time push + MongoDB Notification
+    try {
+        const { createNotification } = require('../notifications/notification.service')
+        
+        await createNotification({
+            userId: order.farmer._id,
+            type: 'ORDER_DELIVERED',
+            title: 'Action Completed: Delivery Verified',
+            body: `Buyer has verified delivery for ${order.product.name}. Funds released!`
+        })
+    } catch (err) {
+        console.error('Notification failed:', err.message)
+    }
+
+    return order
+}
+
 // ──────────────────────────────────────────────
 // CANCEL ORDER (BUYER)
 // ──────────────────────────────────────────────
@@ -202,5 +252,6 @@ module.exports = {
     getFarmerOrders,
     getOrderById,
     updateOrderStatus,
+    verifyOrderDelivery,
     cancelOrder
 }

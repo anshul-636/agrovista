@@ -60,8 +60,8 @@ export default function CreateProductPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name || !price || !quantity || !harvestDate) {
-      toast.error("Please fill in all required fields.");
+    if (!name || !description || !price || !quantity || !harvestDate) {
+      toast.error("Please fill in all required fields (including description).");
       return;
     }
 

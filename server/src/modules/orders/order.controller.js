@@ -6,6 +6,7 @@ const {
     getFarmerOrders,
     getOrderById,
     updateOrderStatus,
+    verifyOrderDelivery,
     cancelOrder
 } = require('./order.service')
 
@@ -38,9 +39,14 @@ const updateStatus = asyncHandler(async (req, res) => {
     res.json(new ApiResponse(200, order, 'Order status updated to ' + status))
 })
 
+const verifyDelivery = asyncHandler(async (req, res) => {
+    const order = await verifyOrderDelivery(req.params.id, req.user._id)
+    res.json(new ApiResponse(200, order, 'Delivery verified successfully. Funds released.'))
+})
+
 const cancel = asyncHandler(async (req, res) => {
     const order = await cancelOrder(req.params.id, req.user._id)
     res.json(new ApiResponse(200, order, 'Order cancelled successfully'))
 })
 
-module.exports = { place, getBuyer, getFarmer, getOne, updateStatus, cancel }
+module.exports = { place, getBuyer, getFarmer, getOne, updateStatus, verifyDelivery, cancel }

@@ -7,7 +7,6 @@ const { uploadToCloudinary } = require('../../config/cloudinary')
 // CREATE AUCTION (FARMER)
 // ──────────────────────────────────────────────
 const createAuction = async (farmerId, data, file) => {
-    if (!file) throw new ApiError(400, 'Auction image is required')
 
     const { productName, description, category, quantity, unit, startingPrice, startTime, endTime } = data
 
@@ -33,8 +32,11 @@ const createAuction = async (farmerId, data, file) => {
     }
 
     // Upload image to Cloudinary using the buffer (memoryStorage)
-    const uploadResult = await uploadToCloudinary(file.buffer, 'agrovista/auctions')
-    const imageUrl = uploadResult.secure_url
+    let imageUrl = "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&q=80" // Premium crop layout fallback
+    if (file) {
+        const uploadResult = await uploadToCloudinary(file.buffer, 'agrovista/auctions')
+        imageUrl = uploadResult.secure_url
+    }
 
     const auction = await Auction.create({
         farmer: farmerId,
@@ -116,6 +118,12 @@ const placeBid = async (auctionId, bidderId, amount) => {
 
     const bidAmount = parseFloat(amount)
 
+    // Check user's purse limit
+    const bidder = await require('../../models/User').findById(bidderId)
+    if (!bidder || bidAmount > (bidder.walletBalance || 0)) {
+        throw new ApiError(400, `Purse Limit Exceeded! Your maximum available purse is ₹${(bidder.walletBalance || 0).toLocaleString()}`)
+    }
+
     // Bid must be higher than current bid (or starting price if no bids yet)
     const minimumBid = auction.currentBid
         ? parseFloat(auction.currentBid) + 1
@@ -136,7 +144,9 @@ const placeBid = async (auctionId, bidderId, amount) => {
         amount: bidAmount
     })
 
+    // Optionally: DEDUCT FROM WALLER OR FREEZE IT? We'll just enforce the ceiling for now as per requirements.
     // Update auction's current bid
+
     await Auction.findByIdAndUpdate(auctionId, {
         currentBid: bidAmount
     })

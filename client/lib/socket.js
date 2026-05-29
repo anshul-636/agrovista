@@ -79,6 +79,15 @@ class MockSocket {
       }, 6000);
     }
 
+    if (event === "leave:auction") {
+      const { auctionId } = data;
+      this.joinedRooms.delete(`auction:${auctionId}`);
+      if (this.intervals[auctionId]) {
+        clearInterval(this.intervals[auctionId]);
+        delete this.intervals[auctionId];
+      }
+    }
+
     // Handle Mock Chat Simulation
     if (event === "join:chat") {
       const { orderId } = data;

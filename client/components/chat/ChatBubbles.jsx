@@ -67,6 +67,7 @@ const TypingIndicator = () => (
 
 // Message bubble
 const MessageBubble = ({ message, isMe, showTime, isTopInGroup, isGrouped }) => {
+  const [lightbox, setLightbox] = useState(false);
   if (!message) return null;
 
   const displayTime = message.createdAt 
@@ -76,52 +77,92 @@ const MessageBubble = ({ message, isMe, showTime, isTopInGroup, isGrouped }) => 
       })
     : "";
 
+  const statusMap = {
+    sending: "sent",
+    sent: "sent",
+    read: "seen",
+    failed: "sent"
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95, transformOrigin: isMe ? "right bottom" : "left bottom" }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.2 }}
-      className={`flex flex-col relative w-full mb-1 group px-2 sm:px-4 ${isMe ? "items-end" : "items-start"}`}
-    >
-      <div 
-        className={`relative max-w-[85%] sm:max-w-[70%] pb-1 pt-1.5 px-3 text-[14.5px] leading-relaxed break-words shadow-sm ${
-          isMe
-            ? `bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] ${isTopInGroup ? 'rounded-l-lg rounded-br-lg rounded-tr-none' : 'rounded-lg'}`
-            : `bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] ${isTopInGroup ? 'rounded-r-lg rounded-bl-lg rounded-tl-none' : 'rounded-lg'}`
-        }`}
+    <>
+      {lightbox && message.imageUrl && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightbox(false)}
+        >
+          <img
+            src={message.imageUrl}
+            alt="Full size"
+            className="max-h-[90vh] max-w-[90vw] rounded-2xl shadow-2xl object-contain"
+          />
+          <button
+            onClick={() => setLightbox(false)}
+            className="absolute top-4 right-4 text-white text-2xl font-bold hover:text-gray-300"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, transformOrigin: isMe ? "right bottom" : "left bottom" }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2 }}
+        className={`flex flex-col relative w-full mb-1 group px-2 sm:px-4 ${isMe ? "items-end" : "items-start"}`}
       >
-        {/* Tail graphic for the top-most message of a group */}
-        {isTopInGroup && (
-          <svg viewBox="0 0 8 13" height="13" width="8" className={`absolute top-0 w-2 h-3.5 fill-current ${
-            isMe ? "text-[#d9fdd3] dark:text-[#005c4b] -right-2 right-tail" : "text-white dark:text-[#202c33] -left-2 scale-x-[-1] left-tail"
-          }`}>
-            <path opacity="0.13" d="M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z"></path>
-            <path fill="currentColor" d="M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0z"></path>
-          </svg>
-        )}
+        <div 
+          className={`relative max-w-[85%] sm:max-w-[70%] pb-1 pt-1.5 px-3 text-[14.5px] leading-relaxed break-words shadow-sm ${
+            isMe
+              ? `bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] ${isTopInGroup ? 'rounded-l-lg rounded-br-lg rounded-tr-none' : 'rounded-lg'}`
+              : `bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] ${isTopInGroup ? 'rounded-r-lg rounded-bl-lg rounded-tl-none' : 'rounded-lg'}`
+          } ${message.status === 'failed' ? 'opacity-60 ring-1 ring-red-400' : ''}`}
+        >
+          {isTopInGroup && (
+            <svg viewBox="0 0 8 13" height="13" width="8" className={`absolute top-0 w-2 h-3.5 fill-current ${
+              isMe ? "text-[#d9fdd3] dark:text-[#005c4b] -right-2 right-tail" : "text-white dark:text-[#202c33] -left-2 scale-x-[-1] left-tail"
+            }`}>
+              <path opacity="0.13" d="M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z"></path>
+              <path fill="currentColor" d="M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0z"></path>
+            </svg>
+          )}
 
-        {/* Sender Name for Group Chats (visible on the first message of incoming grouped) */}
-        {!isMe && isTopInGroup && message.senderName && (
-          <div className="text-[13px] font-bold text-[#eb5528] dark:text-[#6bcbab] mb-0.5 tracking-tight flex items-center justify-between gap-4">
-            <span>{message.senderName}</span>
-            <span className="text-[10px] font-medium text-[#54656f] dark:text-[#8696a0] opacity-0 group-hover:opacity-100 transition">{message.senderRole || "FARMER"}</span>
-          </div>
-        )}
+          {!isMe && isTopInGroup && message.senderName && (
+            <div className="text-[13px] font-bold text-[#eb5528] dark:text-[#6bcbab] mb-0.5 tracking-tight flex items-center justify-between gap-4">
+              <span>{message.senderName}</span>
+              <span className="text-[10px] font-medium text-[#54656f] dark:text-[#8696a0] opacity-0 group-hover:opacity-100 transition">{message.senderRole || "FARMER"}</span>
+            </div>
+          )}
 
-        <div className="flex min-w-[50px] relative">
-          <span className="inline-block flex-1 mr-8 align-middle">
-            {message.content || "(empty message)"}
-          </span>
-          
-          <div className="absolute right-0 bottom-[-4px] flex items-center ml-2 h-full justify-end" style={{ alignSelf: 'flex-end', clear: 'both' }}>
-            <span className="text-[10.5px] whitespace-nowrap text-[#667781] dark:text-[#8696a0] pt-1">
-              {displayTime}
+          {/* Image attachment */}
+          {message.imageUrl && (
+            <div className="mb-1.5 mt-0.5 -mx-1">
+              <img
+                src={message.imageUrl}
+                alt="Attachment"
+                className="rounded-xl max-h-64 w-full object-cover cursor-pointer hover:opacity-90 transition"
+                onClick={() => setLightbox(true)}
+              />
+            </div>
+          )}
+
+          <div className="flex min-w-[50px] relative">
+            <span className="inline-block flex-1 mr-8 align-middle">
+              {message.content || (message.imageUrl ? "" : "(empty message)")}
             </span>
-            <MessageStatus status={message.status || "read"} isMe={isMe} />
+            
+            <div className="absolute right-0 bottom-[-4px] flex items-center ml-2 h-full justify-end" style={{ alignSelf: 'flex-end', clear: 'both' }}>
+              {message.status === 'failed' && (
+                <span className="text-[10px] text-red-500 mr-1">!</span>
+              )}
+              <span className="text-[10.5px] whitespace-nowrap text-[#667781] dark:text-[#8696a0] pt-1">
+                {displayTime}
+              </span>
+              <MessageStatus status={statusMap[message.status] || "read"} isMe={isMe} />
+            </div>
           </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </>
   );
 };
 

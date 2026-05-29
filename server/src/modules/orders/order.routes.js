@@ -7,6 +7,7 @@ const {
     getFarmer,
     getOne,
     updateStatus,
+    verifyDelivery,
     cancel
 } = require('./order.controller')
 
@@ -21,6 +22,7 @@ router.get('/farmer', authorize('FARMER'), getFarmer)
 router.post('/', authorize('BUYER'), place)
 router.get('/:id', getOne)
 router.patch('/:id/status', authorize('FARMER'), updateStatus)
+router.patch('/:id/verify', authorize('BUYER'), verifyDelivery)
 router.post('/:id/cancel', authorize('BUYER'), cancel)
 
 module.exports = router

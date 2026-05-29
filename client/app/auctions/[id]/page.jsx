@@ -28,8 +28,13 @@ export default function AuctionRoomPage() {
   const [participantsCount, setParticipantsCount] = useState(8);
   const [isExpired, setIsExpired] = useState(false);
   const [winner, setWinner] = useState(null);
+  const isExpiredRef = useRef(isExpired);
   
   const socketRef = useRef(null);
+
+  useEffect(() => {
+    isExpiredRef.current = isExpired;
+  }, [isExpired]);
 
   // Fetch auction details
   const { data: auctionRes, isLoading } = useQuery({
@@ -60,6 +65,10 @@ export default function AuctionRoomPage() {
     const handleNewBid = (data) => {
       console.log("[Room] Received bid event:", data);
       if (data.auctionId !== id) return;
+      if (isExpiredRef.current) {
+        console.log("Auction is mathematically closed. Rejecting streaming bid.");
+        return;
+      }
 
       // Handle relative modifiers from mock socket
       let actualAmount = data.amount;
@@ -70,8 +79,13 @@ export default function AuctionRoomPage() {
 
       setCurrentBid(actualAmount);
       
+      // The backend sends a populated bidder object, whereas the local mock socket sent a string. We gracefully extract `.name` if it's an object.
+      const bidderString = typeof data.bidder === 'object' && data.bidder !== null 
+        ? data.bidder.name 
+        : (data.bidder || "Unknown Bidder");
+
       const newBidEntry = {
-        bidderName: data.bidder,
+        bidderName: bidderString,
         amount: actualAmount,
         isUser: !!data.isUser,
         timestamp: data.timestamp || new Date().toISOString()
@@ -80,7 +94,7 @@ export default function AuctionRoomPage() {
       setBidsList(prev => [newBidEntry, ...prev]);
 
       // Spark screen indicator
-      toast.info(`New bid placed by ${data.bidder}: ₹${actualAmount}/kg`, { icon: "📈" });
+      toast.info(`New bid placed by ${bidderString}: ₹${actualAmount}/kg`, { icon: "📈" });
     };
 
     socket.on("bid:new", handleNewBid);
@@ -106,25 +120,31 @@ export default function AuctionRoomPage() {
     const updateTimer = () => {
       const diff = new Date(auction.endTime) - new Date();
       if (diff <= 0) {
-        setTimeLeft({ diff: 0, text: "Ended" });
-        setIsExpired(true);
-        
-        // Find winner (highest bidder)
-        if (bidsList.length > 0) {
-          const highBid = bidsList[0];
-          setWinner(highBid.bidderName);
-
-          // Trigger Confetti if user wins
-          if (highBid.isUser || highBid.bidderName.includes("You")) {
-            confetti({
-              particleCount: 150,
-              spread: 80,
-              origin: { y: 0.6 }
-            });
-            toast.success("Congratulations! You won this crop lot!", { duration: 8000, icon: "🏆" });
+        if (!isExpiredRef.current) {
+          setTimeLeft({ diff: 0, text: "Ended" });
+          setIsExpired(true);
+          
+          if (socketRef.current) {
+            socketRef.current.emit("leave:auction", { auctionId: id });
           }
-        } else {
-          setWinner("No bidders");
+          
+          // Find winner (highest bidder)
+          if (bidsList.length > 0) {
+            const highBid = bidsList[0];
+            setWinner(highBid.bidderName);
+
+            // Trigger Confetti if user wins
+            if (highBid.isUser || highBid.bidderName.includes("You")) {
+              confetti({
+                particleCount: 150,
+                spread: 80,
+                origin: { y: 0.6 }
+              });
+              toast.success("Congratulations! You won this crop lot!", { duration: 8000, icon: "🏆" });
+            }
+          } else {
+            setWinner("No bidders");
+          }
         }
         return;
       }
@@ -141,7 +161,19 @@ export default function AuctionRoomPage() {
     return () => clearInterval(interval);
   }, [auction, bidsList]);
 
-  // Place Bid action
+  // Place Bid action (HTTP Mapped)
+  const placeBidMutation = useMutation({
+    mutationFn: (amount) => apiService.placeBid(id, amount),
+    onSuccess: (res) => {
+      if (!res.success) {
+        toast.error(res.error || "Failed to place bid.");
+      } else {
+        // Socket push will automatically handle state updates
+        setBidAmount("");
+      }
+    }
+  });
+
   const handleBidSubmit = (e) => {
     if (e) e.preventDefault();
     if (!isAuthenticated) {
@@ -162,15 +194,12 @@ export default function AuctionRoomPage() {
       toast.error(`Bid must exceed current high bid of ₹${currentBid}/kg.`);
       return;
     }
-
-    if (socketRef.current) {
-      socketRef.current.emit("place:bid", {
-        auctionId: id,
-        amount: val,
-        bidder: user.name
-      });
-      setBidAmount("");
+    if (val > (user?.walletBalance || 1000000)) {
+      toast.error(`Limit Exceeded! Your maximum purse is ₹${(user?.walletBalance || 1000000).toLocaleString()}`);
+      return;
     }
+
+    placeBidMutation.mutate(val);
   };
 
   const handleQuickIncrement = (inc) => {
@@ -184,13 +213,12 @@ export default function AuctionRoomPage() {
       toast.error("Only buyers can bid on auctions.");
       return;
     }
-    if (socketRef.current) {
-      socketRef.current.emit("place:bid", {
-        auctionId: id,
-        amount: nextVal,
-        bidder: user.name
-      });
+    if (nextVal > (user?.walletBalance || 1000000)) {
+      toast.error(`Limit Exceeded! Your maximum purse is ₹${(user?.walletBalance || 1000000).toLocaleString()}`);
+      return;
     }
+    
+    placeBidMutation.mutate(nextVal);
   };
 
   if (isLoading) {
@@ -310,6 +338,14 @@ export default function AuctionRoomPage() {
                 <div className="text-center sm:text-right text-xs space-y-1 text-agri-brown font-semibold">
                   <div>Starting Bid: <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">₹{auction.startingPrice}/kg</span></div>
                   <div>Lot Size: <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">{auction.lotSize} {auction.unit}</span></div>
+                  
+                  {user?.role === "BUYER" && (
+                    <div className="mt-4 pt-1 mb-2 border-t border-agri-green/10">
+                      <span className="uppercase text-[9px] tracking-widest text-agri-green-dark font-extrabold block">Bidding Purse Available</span>
+                      <span className="font-black text-agri-green text-lg">₹{(user?.walletBalance || 1000000).toLocaleString()}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-center sm:justify-end gap-1 text-[10px] text-green-600 font-extrabold uppercase mt-1">
                     <ShieldCheck className="w-3.5 h-3.5 text-agri-green" /> Escrow Assured
                   </div>
@@ -389,7 +425,7 @@ export default function AuctionRoomPage() {
                         exit={{ opacity: 0 }}
                         transition={{ type: "spring", duration: 0.3 }}
                         className={`p-3 rounded-2xl border text-xs flex justify-between items-center transition ${
-                          bid.isUser || bid.bidderName.includes("You")
+                          bid.isUser || bid.bidderName?.includes("You")
                             ? "bg-agri-green/10 border-agri-green text-agri-green-dark dark:text-agri-green-light"
                             : "bg-white/50 dark:bg-black/20 border-agri-green/5 text-current"
                         }`}
@@ -397,7 +433,7 @@ export default function AuctionRoomPage() {
                         <div className="space-y-0.5">
                           <span className="font-extrabold flex items-center gap-1">
                             {bid.bidderName}
-                            {(bid.isUser || bid.bidderName.includes("You")) && (
+                            {(bid.isUser || bid.bidderName?.includes("You")) && (
                               <Badge variant="green" size="sm" className="normal-case scale-90">You</Badge>
                             )}
                           </span>

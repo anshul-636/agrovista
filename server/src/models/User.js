@@ -33,6 +33,10 @@ const userSchema = new mongoose.Schema(
         isOAuthUser: {
             type: Boolean,
             default: false
+        },
+        walletBalance: {
+            type: Number,
+            default: 1000000 // 10 Lakhs purse default
         }
     },
     {
