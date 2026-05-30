@@ -1,5 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
+/* Leaflet and MarkerCluster styles imported globally to avoid per-component CSS chunks */
+@import url('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css');
+@import url('https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css');
+@import url('https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -62,7 +67,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .dark .leaflet-tile {
-  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3);
+  /* Tone down tile styling in dark mode to avoid heavy color inversion */
+  filter: brightness(0.9) contrast(0.9) saturate(0.8);
 }
 
 /* Custom Scrollbar for premium SaaS feel */

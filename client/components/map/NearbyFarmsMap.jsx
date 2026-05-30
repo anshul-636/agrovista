@@ -2,7 +2,43 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+
+// MarkerCluster runtime loader URLs
+const MARKER_CLUSTER_CSS = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css";
+const MARKER_CLUSTER_DEFAULT_CSS = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css";
+const MARKER_CLUSTER_JS = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js";
+
+async function loadMarkerCluster() {
+  if (typeof window === 'undefined') return;
+  if (window._leafletMarkerClusterLoaded) return;
+
+  // inject CSS
+  const ensureLink = (href) => {
+    if (!document.querySelector(`link[href='${href}']`)) {
+      const l = document.createElement('link');
+      l.rel = 'stylesheet';
+      l.href = href;
+      document.head.appendChild(l);
+    }
+  };
+
+  ensureLink(MARKER_CLUSTER_CSS);
+  ensureLink(MARKER_CLUSTER_DEFAULT_CSS);
+
+  // inject script and await load
+  if (!document.querySelector(`script[src='${MARKER_CLUSTER_JS}']`)) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = MARKER_CLUSTER_JS;
+      s.async = true;
+      s.onload = () => { window._leafletMarkerClusterLoaded = true; resolve(); };
+      s.onerror = (e) => reject(e);
+      document.body.appendChild(s);
+    });
+  } else {
+    window._leafletMarkerClusterLoaded = true;
+  }
+}
 
 const DEFAULT_CENTER = [19.9975, 73.7898];
 
@@ -32,6 +68,7 @@ export default function NearbyFarmsMap({ farms = [], location = "", fallbackLabe
   const mapInstanceRef = useRef(null);
   const userMarkerRef = useRef(null);
   const farmsLayerRef = useRef(null);
+  const clusterGroupRef = useRef(null);
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [centerLabel, setCenterLabel] = useState(fallbackLabel);
 
@@ -114,6 +151,21 @@ export default function NearbyFarmsMap({ farms = [], location = "", fallbackLabe
 
     farmsLayerRef.current = L.layerGroup().addTo(map);
 
+    // attempt to load markercluster plugin at runtime
+    loadMarkerCluster().then(() => {
+      try {
+        if (window.L && typeof window.L.markerClusterGroup === 'function') {
+          clusterGroupRef.current = L.markerClusterGroup();
+          map.addLayer(clusterGroupRef.current);
+        }
+      } catch (err) {
+        // fallback to simple layerGroup
+        clusterGroupRef.current = farmsLayerRef.current;
+      }
+    }).catch(() => {
+      clusterGroupRef.current = farmsLayerRef.current;
+    });
+
     userMarkerRef.current = L.marker(DEFAULT_CENTER)
       .addTo(map)
       .bindPopup(`<strong>${fallbackLabel}</strong>`);
@@ -140,8 +192,9 @@ export default function NearbyFarmsMap({ farms = [], location = "", fallbackLabe
 
   useEffect(() => {
     if (!farmsLayerRef.current) return;
-
-    farmsLayerRef.current.clearLayers();
+    const targetLayer = clusterGroupRef.current || farmsLayerRef.current;
+    if (!targetLayer) return;
+    if (typeof targetLayer.clearLayers === 'function') targetLayer.clearLayers();
 
     farms.forEach((farm) => {
       if (!Array.isArray(farm.coords) || farm.coords.length < 2) return;
@@ -157,12 +210,65 @@ export default function NearbyFarmsMap({ farms = [], location = "", fallbackLabe
         </div>
       `;
 
-      L.marker(farm.coords).addTo(farmsLayerRef.current).bindPopup(popupContent);
+      // custom simple icon as a colored dot using DivIcon
+      const farmIcon = L.divIcon({
+        className: '',
+        html: `<div style="width:18px;height:18px;border-radius:50%;background:#2E7D32;border:3px solid white;box-shadow:0 0 0 2px rgba(46,125,50,0.12)"></div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
+      });
+
+      const marker = L.marker(farm.coords, { icon: farmIcon }).bindPopup(popupContent);
+      if (typeof targetLayer.addLayer === 'function') targetLayer.addLayer(marker);
+      else if (typeof targetLayer.addTo === 'function') marker.addTo(targetLayer);
     });
   }, [farms]);
 
+  // compute distance (km) between two [lat, lon] points
+  const haversine = (a, b) => {
+    const toRad = (v) => (v * Math.PI) / 180;
+    const [lat1, lon1] = a;
+    const [lat2, lon2] = b;
+    const R = 6371; // Earth radius km
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const s =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  };
+
+  const highlightNearest = () => {
+    if (!mapInstanceRef.current || !Array.isArray(farms) || farms.length === 0) return;
+    const center = mapInstanceRef.current.getCenter();
+    const centerArr = [center.lat, center.lng];
+    let best = null;
+    for (const f of farms) {
+      if (!Array.isArray(f.coords) || f.coords.length < 2) continue;
+      const d = haversine(centerArr, f.coords);
+      if (!best || d < best.d) best = { farm: f, d };
+    }
+    if (best && best.farm && Array.isArray(best.farm.coords)) {
+      mapInstanceRef.current.setView(best.farm.coords, 13);
+      L.popup()
+        .setLatLng(best.farm.coords)
+        .setContent(`<strong>${best.farm.name}</strong><div style="font-size:11px;">Grower: ${best.farm.farmer || ''}</div>`) 
+        .openOn(mapInstanceRef.current);
+    }
+  };
+
   return (
     <div className="w-full h-full min-h-[300px] relative rounded-3xl overflow-hidden shadow-inner">
+      <div className="absolute left-4 top-4 z-30">
+        <button
+          type="button"
+          aria-label="Find nearest farm"
+          onClick={highlightNearest}
+          className="bg-white text-gray-800 dark:bg-black dark:text-white px-3 py-2 rounded-lg shadow-md border border-gray-200 dark:border-gray-800 font-medium"
+        >
+          Find nearest farm
+        </button>
+      </div>
       <div ref={mapContainerRef} className="w-full h-full absolute inset-0 z-10" />
     </div>
   );

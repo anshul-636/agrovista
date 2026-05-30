@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from 'next/image'
 import { useAuthStore } from "../../store/authStore";
 import { ShieldCheck, Star, Clock, MapPin, User, Settings, Edit3, Save } from "lucide-react";
 import Header from "../../components/shared/Header";
@@ -124,9 +125,11 @@ export default function ProfilePage() {
                 <Card className="border-agri-green/5 p-6 sm:p-8 space-y-6">
                   {/* Photo & Name */}
                   <div className="flex items-center gap-5">
-                    <img
-                      src={avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"}
-                      alt=""
+                    <Image
+                      src={avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'}
+                      alt={user.name || 'Profile image'}
+                      width={96}
+                      height={96}
                       className="w-24 h-24 object-cover rounded-3xl border border-agri-green/10"
                     />
                     <div className="space-y-1">

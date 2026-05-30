@@ -111,12 +111,15 @@ export default function AuctionsListingPage() {
               <Card key={auc.id} hoverEffect className="border-agri-green/5 p-6 flex flex-col justify-between h-[450px]">
                 <div className="space-y-4">
                   {/* Image & Status banner */}
-                  <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-agri-green/10">
-                    <img 
-                      src={auc.images?.[0] || auc.image || "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&q=80&w=600"} 
-                      alt={auc.productName} 
-                      className="absolute inset-0 w-full h-full object-cover" 
-                    />
+                    <div className="relative h-48 w-full rounded-2xl overflow-hidden bg-agri-green/10">
+                      <Image
+                        src={auc.image || auc.images?.[0] || "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&q=80&w=600"}
+                        alt={auc.productName || auc.product?.name || "Auction lot"}
+                        width={800}
+                        height={320}
+                        unoptimized
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
                     <div className="absolute top-3 left-3 bg-red-500 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow">
                       <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
                       LIVE BIDDING

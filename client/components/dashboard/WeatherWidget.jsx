@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { CloudRain, AlertCircle, Droplets, Gauge, ThermometerSun, Wind } from "lucide-react";
+import { CloudRain, AlertCircle, Droplets, Gauge, ThermometerSun, Wind, RefreshCw } from "lucide-react";
 import { apiService } from "../../lib/api";
 import { useAuthStore } from "../../store/authStore";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/Card";
@@ -21,6 +21,7 @@ export default function WeatherWidget() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [region, setRegion] = useState(DEFAULT_REGION.name);
+  const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuthStore();
   const profileLocation = user?.location?.trim() || "";
   const profileLat = user?.latitude ?? null;
@@ -169,7 +170,7 @@ export default function WeatherWidget() {
     return () => {
       cancelled = true;
     };
-  }, [profileLocation, profileLat, profileLon, user?.id]);
+  }, [profileLocation, profileLat, profileLon, user?.id, refreshKey]);
 
   const current = weather?.current;
   const forecast = weather?.forecast || [];
@@ -181,7 +182,16 @@ export default function WeatherWidget() {
           <CardTitle className="text-sm font-bold text-agri-green">Weather & Crop Advisor</CardTitle>
           <span className="text-[10px] text-agri-brown font-bold uppercase">{region}</span>
         </div>
-        <CloudRain className="w-8 h-8 text-agri-wheat opacity-60" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setRefreshKey((k) => k + 1)}
+            title="Refresh weather"
+            className="p-2 rounded-xl bg-white/70 dark:bg-black/60 hover:bg-white/90"
+          >
+            <RefreshCw className="w-4 h-4 text-agri-green" />
+          </button>
+          <CloudRain className="w-8 h-8 text-agri-wheat opacity-60" />
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -224,7 +234,7 @@ export default function WeatherWidget() {
               <Metric icon={Gauge} label="Direction" value={`${Math.round(current?.windDirection ?? 0)}°`} />
             </div>
 
-            {forecast.length > 0 && (
+            {forecast.length > 0 ? (
               <div className="rounded-2xl border border-agri-green/10 bg-white/50 dark:bg-black/10 p-3">
                 <p className="text-[10px] uppercase font-black text-agri-green">3-day forecast</p>
                 <div className="mt-2 space-y-2">
@@ -237,6 +247,11 @@ export default function WeatherWidget() {
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-agri-green/10 bg-white/50 dark:bg-black/10 p-3 text-xs text-agri-brown">
+                <p className="font-bold">No forecast available</p>
+                <p className="mt-1">Short-term forecast not available for this location.</p>
               </div>
             )}
           </>
