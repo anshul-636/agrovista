@@ -98,9 +98,11 @@ function EditForm() {
     setAiSuggestion(null);
     try {
       const res = await apiService.getAiPriceSuggestion({
-        name,
+        productName: name,
         category,
+        quantity: quantity ? Number(quantity) : undefined,
         unit,
+        description,
         isOrganic,
         location: user?.location || "Nashik"
       });
@@ -115,11 +117,11 @@ function EditForm() {
     }
   };
 
-  const applyAiPrice = (recRange) => {
-    const match = recRange.match(/₹(\d+)/);
-    if (match && match[1]) {
-      setPrice(match[1]);
-      toast.success(`Applied starting bid of ₹${match[1]}/kg!`);
+  const applyAiPrice = (recommendation) => {
+    const targetPrice = recommendation?.suggestedPrice || recommendation?.priceRange?.min;
+    if (targetPrice) {
+      setPrice(String(Math.round(targetPrice)));
+      toast.success(`Applied starting price of ₹${Math.round(targetPrice)}/${unit}!`);
     }
   };
 
@@ -277,10 +279,12 @@ function EditForm() {
                 <div className="flex justify-between items-start border-b border-agri-green/5 pb-3">
                   <div>
                     <p className="text-xs text-agri-brown">Suggested Price</p>
-                    <p className="text-lg font-black text-agri-green">{aiSuggestion.recommendedRange}</p>
+                    <p className="text-lg font-black text-agri-green">
+                      {aiSuggestion.recommendedRange || `₹${aiSuggestion.suggestedPrice}/${unit}`}
+                    </p>
                   </div>
                   <Button
-                    onClick={() => applyAiPrice(aiSuggestion.recommendedRange)}
+                    onClick={() => applyAiPrice(aiSuggestion)}
                     className="py-1 px-3 text-[10px] rounded-lg"
                   >
                     Apply

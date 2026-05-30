@@ -18,6 +18,8 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, isAuthenticated } = useAuthStore();
+  const currentUserId = user?.id || user?._id || null;
+  const currentUserRole = String(user?.role || "").toUpperCase();
   const [quantity, setQuantity] = useState(10);
   const [address, setAddress] = useState("");
   const [activeImageIdx, setActiveImageIdx] = useState(0);
@@ -41,6 +43,7 @@ export default function ProductDetailPage() {
       images: product.images && product.images.length > 0 ? product.images : ["https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"],
     };
   }
+  const isOwnProduct = !!(product && currentUserId && (String(product.farmerId) === String(currentUserId) || String(product.farmer?._id) === String(currentUserId)));
 
   // Order mutation
   const createOrderMutation = useMutation({
@@ -53,6 +56,9 @@ export default function ProductDetailPage() {
       } else {
         toast.error("Failed to place order.");
       }
+    },
+    onError: (error) => {
+      toast.error(error?.response?.data?.message || error?.message || "Failed to place order.");
     }
   });
 
@@ -63,8 +69,12 @@ export default function ProductDetailPage() {
       router.push("/login");
       return;
     }
-    if (user.role !== "BUYER") {
+    if (currentUserRole !== "BUYER") {
       toast.error("Only buyers can purchase products.");
+      return;
+    }
+    if (isOwnProduct) {
+      toast.error("You cannot order your own product.");
       return;
     }
     if (quantity <= 0) {
@@ -270,7 +280,17 @@ export default function ProductDetailPage() {
                 <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">{product.quantity} {product.unit}</span>
               </div>
 
-              <form onSubmit={handlePlaceOrder} className="space-y-4">
+              {currentUserRole !== "BUYER" || isOwnProduct ? (
+                <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-100">
+                  <p className="font-bold">Ordering is unavailable on this account.</p>
+                  <p className="text-xs leading-relaxed">
+                    {currentUserRole !== "BUYER"
+                      ? "Only buyer accounts can place orders. Switch to a buyer account to purchase this product."
+                      : "You cannot place an order for your own listing."}
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handlePlaceOrder} className="space-y-4">
                 {/* Quantity Select widget */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">
@@ -335,6 +355,7 @@ export default function ProductDetailPage() {
                   <span>{createOrderMutation.isLoading ? "Submitting Order..." : "Confirm Purchase"}</span>
                 </Button>
               </form>
+              )}
             </Card>
           </div>
         </div>

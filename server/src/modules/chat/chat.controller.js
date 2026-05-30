@@ -15,7 +15,7 @@ const send = asyncHandler(async (req, res) => {
     // Broadcast to all users in the order room via socket
     const io = req.app.get('io')
     if (io) {
-        io.to(`order:${req.params.orderId}`).emit('chat:message', {
+        io.to(`chat:${req.params.orderId}`).emit('chat:message', {
             ...message,
             orderId: req.params.orderId
         })

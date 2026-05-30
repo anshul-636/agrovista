@@ -16,6 +16,7 @@ import { toast } from "sonner";
 export default function MessagesPage() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
+  const currentUserId = user?.id || user?._id || null;
 
   const [activeOrderId, setActiveOrderId] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
@@ -53,7 +54,7 @@ export default function MessagesPage() {
       try {
         const res = await apiService.getChatHistory(activeOrderId);
         if (res.success) {
-          setChatMessages(res.data || []);
+          setChatMessages((res.data || []).map(normalizeChatMessage));
         }
       } catch (e) {
         console.error("Chat history fetch error:", e);
@@ -73,8 +74,16 @@ export default function MessagesPage() {
     socket.emit("join:chat", { orderId: activeOrderId });
 
     const handleNewMessage = (msg) => {
-      if (msg.orderId !== activeOrderId) return;
-      setChatMessages(prev => [...prev, msg]);
+      const normalizedMessage = normalizeChatMessage(msg);
+      if (String(normalizedMessage.orderId) !== String(activeOrderId)) return;
+      setChatMessages(prev => {
+        const existingIndex = prev.findIndex(m => String(m.id) === String(normalizedMessage.id));
+        if (existingIndex !== -1) {
+          return prev.map(m => String(m.id) === String(normalizedMessage.id) ? normalizedMessage : m);
+        }
+
+        return [...prev, normalizedMessage];
+      });
 
       setTimeout(() => {
         if (chatScrollRef.current) {
@@ -103,14 +112,28 @@ export default function MessagesPage() {
 
     socketRef.current.emit("send:message", {
       orderId: activeOrderId,
-      content: typedMessage.trim(),
-      senderId: user.id,
-      senderName: user.name,
-      senderRole: user.role
+      content: typedMessage.trim()
     });
 
     setTypedMessage("");
   };
+
+  function normalizeChatMessage(msg) {
+    if (!msg) return msg;
+
+    const sender = msg.sender || {};
+    return {
+      id: msg.id || msg._id || `${msg.orderId || activeOrderId}-${msg.createdAt || Date.now()}`,
+      orderId: msg.orderId || activeOrderId,
+      senderId: msg.senderId || sender._id || sender.id || sender,
+      senderName: msg.senderName || sender.name || "Unknown",
+      senderRole: msg.senderRole || sender.role || "BUYER",
+      content: msg.content || "",
+      imageUrl: msg.imageUrl || null,
+      createdAt: msg.createdAt || new Date().toISOString(),
+      status: msg.status || "sent",
+    };
+  }
 
   if (!isAuthenticated || !user) {
     return null;
@@ -206,7 +229,7 @@ export default function MessagesPage() {
                     className="flex-1 p-4 overflow-y-auto space-y-4 bg-agri-cream/10 dark:bg-black/5"
                   >
                     {chatMessages.map((msg) => {
-                      const isMe = msg.senderId === user.id;
+                      const isMe = String(msg.senderId) === String(currentUserId);
                       return (
                         <div
                           key={msg.id}

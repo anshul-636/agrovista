@@ -3,7 +3,7 @@
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ArrowLeft, Clock, MapPin, Truck, HelpCircle, FileText, ArrowRight } from "lucide-react";
 import Header from "../../components/shared/Header";
@@ -13,9 +13,11 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { apiService } from "../../lib/api";
 import { useAuthStore } from "../../store/authStore";
+import { toast } from "sonner";
 
 export default function OrdersPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, isAuthenticated } = useAuthStore();
 
   // Route security
@@ -33,6 +35,23 @@ export default function OrdersPage() {
   });
 
   const orders = ordersRes?.data || [];
+
+  const confirmPurchaseMutation = useMutation({
+    mutationFn: (orderId) => apiService.verifyOrderDelivery(orderId),
+    onSuccess: (res) => {
+      if (res.success && res.data) {
+        queryClient.invalidateQueries(["orders", user?.role]);
+        queryClient.invalidateQueries(["buyerOrders"]);
+        queryClient.invalidateQueries(["order", res.data.id]);
+        toast.success("Purchase confirmed. Funds released to the farmer.");
+      } else {
+        toast.error(res.error || "Unable to confirm purchase");
+      }
+    },
+    onError: (error) => {
+      toast.error(error?.response?.data?.message || error?.message || "Unable to confirm purchase");
+    }
+  });
 
   if (!isAuthenticated || !user) {
     return null;
@@ -129,6 +148,17 @@ export default function OrdersPage() {
                             Track <ArrowRight className="w-4 h-4" />
                           </Button>
                         </Link>
+                        {user.role === "BUYER" && order.status === "DISPATCHED" && (
+                          <Button
+                            size="sm"
+                            onClick={() => confirmPurchaseMutation.mutate(order.id)}
+                            disabled={confirmPurchaseMutation.isPending}
+                            className="font-extrabold flex items-center gap-0.5 text-xs bg-agri-green text-white hover:bg-agri-green-hover"
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                            {confirmPurchaseMutation.isPending ? "Confirming..." : "Confirm Purchase"}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>

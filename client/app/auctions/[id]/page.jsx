@@ -70,16 +70,16 @@ export default function AuctionRoomPage() {
         return;
       }
 
-      // Handle relative modifiers from mock socket
+      // Handle realtime bid payloads from the backend socket
       let actualAmount = data.amount;
-      if (data.amount < 10) {
-        // It's a mock incremental modifier
+      if (typeof data.amount === "number" && data.amount < 10) {
+        // Some backends may emit incremental bids instead of absolute totals
         actualAmount = currentBid + data.amount;
       }
 
       setCurrentBid(actualAmount);
       
-      // The backend sends a populated bidder object, whereas the local mock socket sent a string. We gracefully extract `.name` if it's an object.
+      // Normalize bidder payloads from the backend.
       const bidderString = typeof data.bidder === 'object' && data.bidder !== null 
         ? data.bidder.name 
         : (data.bidder || "Unknown Bidder");

@@ -1,6 +1,26 @@
 const Order = require('../../models/Order')
 const Product = require('../../models/Product')
 const ApiError = require('../../utils/ApiError')
+const { getIO } = require('../../config/socket')
+
+const emitOrderUpdate = async (order, extra = {}) => {
+    try {
+        const io = getIO()
+        const payload = {
+            orderId: order._id.toString(),
+            status: order.status,
+            buyerId: order.buyer.toString(),
+            farmerId: order.farmer.toString(),
+            productId: order.product.toString(),
+            ...extra
+        }
+
+        io.to('user:' + order.buyer.toString()).emit('order:updated', payload)
+        io.to('user:' + order.farmer.toString()).emit('order:updated', payload)
+    } catch (err) {
+        console.error('Order update socket emit failed:', err.message)
+    }
+}
 
 // ──────────────────────────────────────────────
 // STATE MACHINE
@@ -77,6 +97,38 @@ const placeOrder = async (buyerId, data) => {
         { path: 'farmer', select: 'name email' },
         { path: 'product', select: 'name images unit price' }
     ])
+
+    try {
+        const io = getIO()
+        io.to('user:' + product.farmer._id.toString()).emit('order:new', {
+            _id: order._id,
+            id: order._id,
+            status: order.status,
+            quantity: order.quantity,
+            totalAmount: order.totalAmount,
+            unitPrice: order.unitPrice,
+            createdAt: order.createdAt,
+            productId: product._id,
+            productName: product.name,
+            product: {
+                _id: product._id,
+                name: product.name,
+                unit: product.unit,
+                images: product.images
+            },
+            buyerId: order.buyer._id,
+            buyerName: order.buyer.name,
+            buyer: {
+                _id: order.buyer._id,
+                name: order.buyer.name,
+                email: order.buyer.email
+            },
+            farmerId: product.farmer._id,
+            farmerName: product.farmer.name
+        })
+    } catch (err) {
+        console.error('Order notification socket emit failed:', err.message)
+    }
 
     return order
 }
@@ -171,6 +223,11 @@ const updateOrderStatus = async (orderId, farmerId, newStatus) => {
         console.error('Notification failed:', err.message)
     }
 
+    await emitOrderUpdate(order, {
+        productName: order.product.name,
+        source: 'farmer-status'
+    })
+
     return order
 }
 
@@ -215,6 +272,11 @@ const verifyOrderDelivery = async (orderId, buyerId) => {
         console.error('Notification failed:', err.message)
     }
 
+    await emitOrderUpdate(order, {
+        productName: order.product.name,
+        source: 'buyer-verify'
+    })
+
     return order
 }
 
@@ -230,9 +292,9 @@ const cancelOrder = async (orderId, buyerId) => {
         throw new ApiError(403, 'You can only cancel your own orders')
     }
 
-    // Buyer can only cancel if still PENDING
-    if (order.status !== 'PENDING') {
-        throw new ApiError(400, 'You can only cancel orders that are still PENDING')
+    // Buyer can cancel before the order is packed or shipped
+    if (!['PENDING', 'ACCEPTED'].includes(order.status)) {
+        throw new ApiError(400, 'You can only cancel orders before they are packed or shipped')
     }
 
     order.status = 'CANCELLED'
@@ -241,6 +303,11 @@ const cancelOrder = async (orderId, buyerId) => {
     // Restore product stock when order is cancelled
     await Product.findByIdAndUpdate(order.product, {
         $inc: { quantity: order.quantity }
+    })
+
+    await emitOrderUpdate(order, {
+        productName: order.product.toString(),
+        source: 'buyer-cancel'
     })
 
     return order

@@ -12,7 +12,8 @@ const getFarmerAnalytics = async (farmerId) => {
     // Run all 5 queries at the same time for speed
     const [
         revenueByDay,
-        topProducts,
+        topProductsRaw,
+        categoryBreakdown,
         ordersByStatus,
         monthlySummary,
         totalProducts
@@ -77,6 +78,32 @@ const getFarmerAnalytics = async (farmerId) => {
             }
         ]),
 
+        // Revenue by crop category for the donut chart
+        Order.aggregate([
+            {
+                $match: {
+                    farmer: farmerId,
+                    status: 'DELIVERED'
+                }
+            },
+            {
+                $lookup: {
+                    from: 'products',
+                    localField: 'product',
+                    foreignField: '_id',
+                    as: 'product'
+                }
+            },
+            { $unwind: '$product' },
+            {
+                $group: {
+                    _id: '$product.category',
+                    value: { $sum: '$totalAmount' }
+                }
+            },
+            { $sort: { value: -1 } }
+        ]),
+
         // Count orders by status
         Order.aggregate([
             { $match: { farmer: farmerId } },
@@ -116,15 +143,64 @@ const getFarmerAnalytics = async (farmerId) => {
         Product.countDocuments({ farmer: farmerId, isAvailable: true })
     ])
 
+    const summary = monthlySummary[0] || {
+        totalRevenue: 0,
+        totalOrders: 0,
+        pendingOrders: 0
+    }
+
+    const deliveredCount = ordersByStatus.find((status) => status._id === 'DELIVERED')?.count || 0
+    const activeProducts = totalProducts
+    const thisMonthRevenue = summary.totalRevenue || 0
+    const completionRate = summary.totalOrders > 0
+        ? Math.round((deliveredCount / summary.totalOrders) * 100)
+        : 0
+    const avgOrderValue = summary.totalOrders > 0
+        ? Math.round(thisMonthRevenue / summary.totalOrders)
+        : 0
+
+    const revenueTrend = revenueByDay.map((entry) => ({
+        date: entry._id,
+        revenue: entry.revenue
+    }))
+
+    const topProducts = topProductsRaw.map((entry) => ({
+        name: entry.productName,
+        revenue: entry.totalRevenue,
+        quantity: entry.totalQuantity,
+        orders: entry.totalOrders,
+        image: entry.productImage
+    }))
+
+    const palette = {
+        VEGETABLES: '#2E7D32',
+        FRUITS: '#F9A825',
+        GRAINS: '#8D6E63',
+        DAIRY: '#66BB6A',
+        HERBS: '#43A047',
+        OTHER: '#A1887F'
+    }
+
+    const categoryData = categoryBreakdown.map((entry) => ({
+        name: entry._id || 'OTHER',
+        value: entry.value,
+        color: palette[entry._id] || palette.OTHER
+    }))
+
     // Format the response cleanly for the frontend
     return {
         revenueByDay,
+        revenueTrend,
         topProducts,
+        categoryData,
         ordersByStatus,
-        summary: monthlySummary[0] || {
-            totalRevenue: 0,
-            totalOrders: 0,
-            pendingOrders: 0
+        summary: {
+            ...summary,
+            thisMonthRevenue,
+            completionRate,
+            avgOrderValue,
+            activeProducts,
+            liveAuctions: 0
         },
         totalProducts
     }

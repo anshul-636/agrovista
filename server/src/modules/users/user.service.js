@@ -1,6 +1,8 @@
 const User = require('../../models/User')
 const Review = require('../../models/Review')
 const Order = require('../../models/Order')
+const Product = require('../../models/Product')
+const Auction = require('../../models/Auction')
 const ApiError = require('../../utils/ApiError')
 
 // ──────────────────────────────────────────────
@@ -70,7 +72,7 @@ const getPublicProfile = async (userId) => {
     if (!user) throw new ApiError(404, 'User not found')
 
     const trustData = await getTrustScore(user._id)
-    const productCount = await require('../../models/Product').countDocuments({
+    const productCount = await Product.countDocuments({
         farmer: userId,
         isAvailable: true
     })
@@ -78,4 +80,22 @@ const getPublicProfile = async (userId) => {
     return { ...user.toJSON(), ...trustData, productCount }
 }
 
-module.exports = { getTrustScore, getPublicProfile }
+const getPublicStats = async () => {
+    const [farmers, buyers, products, auctions, locationResults] = await Promise.all([
+        User.countDocuments({ role: 'FARMER' }),
+        User.countDocuments({ role: 'BUYER' }),
+        Product.countDocuments({ isAvailable: true }),
+        Auction.countDocuments({}),
+        User.distinct('location', { location: { $exists: true, $ne: '' } })
+    ])
+
+    return {
+        farmers,
+        buyers,
+        products,
+        auctions,
+        cities: locationResults.length
+    }
+}
+
+module.exports = { getTrustScore, getPublicProfile, getPublicStats }

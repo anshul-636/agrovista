@@ -8,6 +8,7 @@ import Sidebar from "../../components/shared/Sidebar";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
+import { apiService } from "../../lib/api";
 import { toast } from "sonner";
 
 export default function ProfilePage() {
@@ -18,6 +19,8 @@ export default function ProfilePage() {
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [location, setLocation] = useState(user?.location || "");
+  const [latitude, setLatitude] = useState(user?.latitude ?? "");
+  const [longitude, setLongitude] = useState(user?.longitude ?? "");
   const [bio, setBio] = useState(user?.bio || "");
   const [avatar, setAvatar] = useState(user?.avatar || "");
 
@@ -25,10 +28,65 @@ export default function ProfilePage() {
 
   const handleSave = (e) => {
     e.preventDefault();
-    updateProfile({ name, phone, location, bio, avatar });
-    setIsEditing(false);
-    toast.success("Profile parameters updated successfully!");
+    apiService.updateProfile({ name, phone, location, bio, avatar, latitude, longitude })
+      .then((response) => {
+        const updatedUser = response?.data;
+        if (updatedUser) {
+          updateProfile(updatedUser);
+          setName(updatedUser.name || "");
+          setPhone(updatedUser.phone || "");
+          setLocation(updatedUser.location || "");
+          setLatitude(updatedUser.latitude ?? "");
+          setLongitude(updatedUser.longitude ?? "");
+          setBio(updatedUser.bio || "");
+          setAvatar(updatedUser.avatar || "");
+        }
+        setIsEditing(false);
+        toast.success("Profile updated successfully!");
+      })
+      .catch((error) => {
+        toast.error(error?.response?.data?.message || "Failed to update profile.");
+      });
   };
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator?.geolocation) {
+      toast.error('Geolocation not available in this browser')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const lat = pos.coords.latitude
+      const lon = pos.coords.longitude
+      setLatitude(lat)
+      setLongitude(lon)
+
+      // Reverse-geocode to a friendly label
+      try {
+        const url = new URL('https://geocoding-api.open-meteo.com/v1/reverse')
+        url.searchParams.set('latitude', String(lat))
+        url.searchParams.set('longitude', String(lon))
+        url.searchParams.set('language', 'en')
+        url.searchParams.set('format', 'json')
+
+        const res = await fetch(url)
+        if (res.ok) {
+          const d = await res.json()
+          const name = d?.name
+          const admin = d?.admin1
+          const country = d?.country
+          const label = [name, admin, country].filter(Boolean).join(', ')
+          if (label) setLocation(label)
+        }
+      } catch (err) {
+        // ignore reverse geocode failures
+      }
+
+      toast.success('Using your current location')
+    }, (err) => {
+      toast.error('Unable to determine location')
+    }, { timeout: 10000 })
+  }
 
   return (
     <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col text-current transition-colors">
@@ -126,13 +184,21 @@ export default function ProfilePage() {
                         onChange={(e) => setPhone(e.target.value)}
                         required
                       />
-                      <Input
-                        label="Location (City, State)"
-                        id="location"
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        required
-                      />
+                      <div>
+                        <Input
+                          label="Location (City, State)"
+                          id="location"
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
+                          required
+                        />
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button type="button" variant="ghost" onClick={handleUseCurrentLocation} className="text-xs">
+                            Use my current location
+                          </Button>
+                          <span className="text-[10px] text-agri-brown">{latitude ? `Lat: ${latitude.toFixed ? latitude.toFixed(4) : latitude}` : ''} {longitude ? `Lon: ${longitude.toFixed ? longitude.toFixed(4) : longitude}` : ''}</span>
+                        </div>
+                      </div>
                     </div>
                     <Input
                       label="Avatar Image URL"

@@ -87,9 +87,11 @@ export default function CreateProductPage() {
     setAiSuggestion(null);
     try {
       const res = await apiService.getAiPriceSuggestion({
-        name,
+        productName: name,
         category,
+        quantity: quantity ? Number(quantity) : undefined,
         unit,
+        description,
         isOrganic,
         location: user?.location || "Nashik"
       });
@@ -104,13 +106,13 @@ export default function CreateProductPage() {
     }
   };
 
-  const applyAiPrice = (recRange) => {
-    if (!recRange) return;
-    // Extract first number from range string e.g. "₹42 - ₹54 per kg"
-    const match = recRange.match(/₹(\d+)/);
-    if (match && match[1]) {
-      setPrice(match[1]);
-      toast.success(`Applied AI recommended starting base of ₹${match[1]}/kg!`);
+  const applyAiPrice = (recommendation) => {
+    if (!recommendation) return;
+
+    const targetPrice = recommendation.suggestedPrice || recommendation.priceRange?.min;
+    if (targetPrice) {
+      setPrice(String(Math.round(targetPrice)));
+      toast.success(`Applied AI recommended price of ₹${Math.round(targetPrice)}/${unit}!`);
     }
   };
 
@@ -235,7 +237,7 @@ export default function CreateProductPage() {
                     <span>This harvest is verified 100% Organic (Certified)</span>
                   </label>
 
-                  {/* Drag-drop mock image block / URL input */}
+                  {/* Image upload / URL input */}
                   <div className="space-y-3">
                     <span className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">Crop Images</span>
                     <div className="border-2 border-dashed border-agri-green/15 dark:border-agri-green-light/15 bg-white/40 dark:bg-black/10 rounded-2xl p-6 text-center space-y-2">
@@ -244,7 +246,7 @@ export default function CreateProductPage() {
                       <p className="text-[10px] text-agri-brown-light">Supports JPG, PNG formats up to 5MB. Handled via Cloudinary</p>
                     </div>
                     <Input
-                      label="Or Provide Image URL (Demo Fallback)"
+                      label="Or Provide Image URL"
                       id="imageUrl"
                       type="text"
                       placeholder="https://images.unsplash.com/photo-..."
@@ -318,10 +320,12 @@ export default function CreateProductPage() {
                       <div className="flex justify-between items-start border-b border-agri-green/5 pb-3">
                         <div>
                           <span className="text-[9px] text-agri-brown uppercase font-bold">Recommended starting price</span>
-                          <p className="text-xl font-black text-agri-green">{aiSuggestion.recommendedRange}</p>
+                          <p className="text-xl font-black text-agri-green">
+                            {aiSuggestion.recommendedRange || `₹${aiSuggestion.suggestedPrice}/${unit}`}
+                          </p>
                         </div>
                         <Button
-                          onClick={() => applyAiPrice(aiSuggestion.recommendedRange)}
+                          onClick={() => applyAiPrice(aiSuggestion)}
                           className="py-1 px-3 text-[10px] rounded-lg bg-agri-green/10 text-agri-green hover:bg-agri-green/20"
                         >
                           Apply Price

@@ -27,6 +27,8 @@ const userSchema = new mongoose.Schema(
         },
         phone: String,
         location: String,
+        latitude: Number,
+        longitude: Number,
         avatar: String,
         bio: String,
         googleId: String,

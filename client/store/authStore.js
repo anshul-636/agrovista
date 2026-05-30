@@ -1,10 +1,31 @@
 import { create } from "zustand";
 
+const safeParseUser = () => {
+  if (typeof window === "undefined") return null;
+
+  const rawUser = localStorage.getItem("agrovista_user");
+  if (!rawUser) return null;
+
+  try {
+    return JSON.parse(rawUser);
+  } catch (error) {
+    localStorage.removeItem("agrovista_user");
+    localStorage.removeItem("agrovista_token");
+    localStorage.removeItem("agrovista_refresh_token");
+    return null;
+  }
+};
+
+const getStoredValue = (key) => {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(key);
+};
+
 export const useAuthStore = create((set, get) => ({
-  user: typeof window !== "undefined" ? JSON.parse(localStorage.getItem("agrovista_user")) : null,
-  token: typeof window !== "undefined" ? localStorage.getItem("agrovista_token") : null,
-  refreshToken: typeof window !== "undefined" ? localStorage.getItem("agrovista_refresh_token") : null,
-  isAuthenticated: typeof window !== "undefined" ? !!localStorage.getItem("agrovista_token") : false,
+  user: safeParseUser(),
+  token: getStoredValue("agrovista_token"),
+  refreshToken: getStoredValue("agrovista_refresh_token"),
+  isAuthenticated: !!getStoredValue("agrovista_token"),
   loading: false,
 
   login: (user, token, refreshToken = null) => {

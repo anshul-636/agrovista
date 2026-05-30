@@ -1,12 +1,93 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-export default function NearbyFarmsMap() {
+const DEFAULT_CENTER = [19.9975, 73.7898];
+
+async function geocodeLocation(location) {
+  const geocodeUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+  geocodeUrl.searchParams.set("name", location);
+  geocodeUrl.searchParams.set("count", "1");
+  geocodeUrl.searchParams.set("language", "en");
+  geocodeUrl.searchParams.set("format", "json");
+  geocodeUrl.searchParams.set("country", "IN");
+
+  const response = await fetch(geocodeUrl, { cache: "no-store" });
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const result = data?.results?.[0];
+  if (!result) return null;
+
+  return {
+    coords: [result.latitude, result.longitude],
+    label: [result.name, result.admin1, result.country].filter(Boolean).join(", "),
+  };
+}
+
+export default function NearbyFarmsMap({ farms = [], location = "", fallbackLabel = "Your location", centerCoords = null }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const userMarkerRef = useRef(null);
+  const farmsLayerRef = useRef(null);
+  const [center, setCenter] = useState(DEFAULT_CENTER);
+  const [centerLabel, setCenterLabel] = useState(fallbackLabel);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (typeof window === "undefined" || !mapContainerRef.current) return;
+
+    const resolveCenter = async () => {
+      // Priority: explicit centerCoords prop -> saved textual location -> browser geolocation -> default
+      if (centerCoords && Array.isArray(centerCoords) && centerCoords.length === 2) {
+        setCenter(centerCoords);
+        setCenterLabel(fallbackLabel);
+        return;
+      }
+
+      if (location) {
+        const resolved = await geocodeLocation(location);
+        if (!cancelled && resolved?.coords) {
+          setCenter(resolved.coords);
+          setCenterLabel(resolved.label || location);
+          return;
+        }
+      }
+
+      if (navigator?.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            if (!cancelled) {
+              setCenter([position.coords.latitude, position.coords.longitude]);
+              setCenterLabel("Your current location");
+            }
+          },
+          () => {
+            if (!cancelled) {
+              setCenter(DEFAULT_CENTER);
+              setCenterLabel(fallbackLabel);
+            }
+          },
+          { timeout: 5000 }
+        );
+        return;
+      }
+
+      if (!cancelled) {
+        setCenter(DEFAULT_CENTER);
+        setCenterLabel(fallbackLabel);
+      }
+    };
+
+    resolveCenter();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackLabel, location, centerCoords]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !mapContainerRef.current) return;
@@ -22,11 +103,8 @@ export default function NearbyFarmsMap() {
       shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
     });
 
-    // Mock central coordinate (e.g. Maharashtra region center)
-    const center = [19.9975, 73.7898]; // Nashik, Maharashtra
-    
     // Initialize map
-    const map = L.map(mapContainerRef.current).setView(center, 9);
+    const map = L.map(mapContainerRef.current).setView(DEFAULT_CENTER, 9);
     mapInstanceRef.current = map;
 
     // OpenStreetMap tile layer
@@ -34,33 +112,40 @@ export default function NearbyFarmsMap() {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Mock Farms coordinates
-    const nearbyFarms = [
-      {
-        name: "Priya Organic Farms",
-        farmer: "Rajesh Kumar",
-        coords: [19.9975, 73.7898],
-        crops: "Roma Tomatoes, Potatoes",
-        trustScore: 94
-      },
-      {
-        name: "Sai Agri Fields",
-        farmer: "Dinesh Patel",
-        coords: [20.0883, 73.8778],
-        crops: "Red Globe Onions, Chilies",
-        trustScore: 89
-      },
-      {
-        name: "Green Valley Orchards",
-        coords: [19.9122, 73.6823],
-        farmer: "Suresh Patel",
-        crops: "Grapes, Pomegranates",
-        trustScore: 92
-      }
-    ];
+    farmsLayerRef.current = L.layerGroup().addTo(map);
 
-    // Add markers with customizable popups
-    nearbyFarms.forEach(farm => {
+    userMarkerRef.current = L.marker(DEFAULT_CENTER)
+      .addTo(map)
+      .bindPopup(`<strong>${fallbackLabel}</strong>`);
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        userMarkerRef.current = null;
+        farmsLayerRef.current = null;
+      }
+    };
+  }, [fallbackLabel]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    mapInstanceRef.current.setView(center, 9);
+
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setLatLng(center).setPopupContent(`<strong>${centerLabel}</strong>`);
+    }
+  }, [center, centerLabel]);
+
+  useEffect(() => {
+    if (!farmsLayerRef.current) return;
+
+    farmsLayerRef.current.clearLayers();
+
+    farms.forEach((farm) => {
+      if (!Array.isArray(farm.coords) || farm.coords.length < 2) return;
+
       const popupContent = `
         <div style="font-family: var(--font-family-sans); font-size: 11px; padding: 4px; min-width: 150px;">
           <h5 style="margin: 0; font-weight: 800; color: #1B5E20; font-size:12px;">${farm.name}</h5>
@@ -72,18 +157,9 @@ export default function NearbyFarmsMap() {
         </div>
       `;
 
-      L.marker(farm.coords)
-        .addTo(map)
-        .bindPopup(popupContent);
+      L.marker(farm.coords).addTo(farmsLayerRef.current).bindPopup(popupContent);
     });
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, []);
+  }, [farms]);
 
   return (
     <div className="w-full h-full min-h-[300px] relative rounded-3xl overflow-hidden shadow-inner">

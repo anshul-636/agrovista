@@ -46,6 +46,7 @@ function BuyerDashboardContent() {
   const { user, isAuthenticated } = useAuthStore();
   const { notifications } = useNotificationStore();
   const [activeTab, setActiveTab] = useState("overview");
+  const locationLabel = user?.location?.trim() || "Your location";
 
   // Sync tab from query param
   useEffect(() => {
@@ -82,13 +83,31 @@ function BuyerDashboardContent() {
     enabled: !!user && user.role === "BUYER"
   });
 
-  if (!isAuthenticated || !user || user.role !== "BUYER") {
-    return null;
-  }
 
   const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
   const orders = Array.isArray(ordersRes?.data) ? ordersRes.data : [];
   const auctions = Array.isArray(auctionsRes?.data) ? auctionsRes.data : [];
+
+  const confirmPurchaseMutation = useMutation({
+    mutationFn: (orderId) => apiService.verifyOrderDelivery(orderId),
+    onSuccess: (res) => {
+      if (res.success && res.data) {
+        queryClient.invalidateQueries(["buyerOrders"]);
+        queryClient.invalidateQueries(["orders", "BUYER"]);
+        queryClient.invalidateQueries(["order", res.data.id]);
+        toast.success("Purchase confirmed. Funds released to the farmer.");
+      } else {
+        toast.error(res.error || "Unable to confirm purchase");
+      }
+    },
+    onError: (error) => {
+      toast.error(error?.response?.data?.message || error?.message || "Unable to confirm purchase");
+    }
+  });
+
+  if (!isAuthenticated || !user || user.role !== "BUYER") {
+    return null;
+  }
 
   // Watchlist simulation
   const watchlist = products.filter(p => p.isOrganic).slice(0, 3);
@@ -219,6 +238,17 @@ function BuyerDashboardContent() {
                       >
                         Open Logistics Details & Chat <ChevronRight className="w-3.5 h-3.5" />
                       </button>
+                      {trackingOrder.status === "DISPATCHED" && (
+                        <Button
+                          variant="primary"
+                          onClick={() => confirmPurchaseMutation.mutate(trackingOrder.id)}
+                          disabled={confirmPurchaseMutation.isPending}
+                          className="text-[10px] font-extrabold py-1.5 px-3 rounded-lg ml-auto"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          {confirmPurchaseMutation.isPending ? "Confirming..." : "Confirm Purchase"}
+                        </Button>
+                      )}
                     </div>
                   </Card>
                 )}
@@ -249,6 +279,18 @@ function BuyerDashboardContent() {
                             <Badge variant={order.status === "DELIVERED" ? "green" : "yellow"}>
                               {order.status}
                             </Badge>
+                            {order.status === "DISPATCHED" && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => confirmPurchaseMutation.mutate(order.id)}
+                                disabled={confirmPurchaseMutation.isPending}
+                                className="text-[10px] font-extrabold py-1.5 px-3 rounded-lg"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                Confirm Purchase
+                              </Button>
+                            )}
                           </div>
                         ))
                       )}
@@ -377,7 +419,7 @@ function BuyerDashboardContent() {
               >
                 <div className="space-y-2">
                   <h3 className="text-base font-bold text-agri-green-dark dark:text-agri-green-light">
-                    Verified Crop Farms Near Nashik
+                    Verified Crop Farms Near {locationLabel}
                   </h3>
                   <p className="text-xs text-agri-brown">
                     Click on markers to see farm names, farmer profiles, crop inventories, and platform trust score badges.
@@ -385,7 +427,7 @@ function BuyerDashboardContent() {
                 </div>
 
                 <div className="h-[450px] w-full rounded-3xl overflow-hidden shadow-lg border border-agri-green/5 z-10 relative">
-                  <NearbyFarmsMap />
+                  <NearbyFarmsMap location={user?.location || ""} fallbackLabel={locationLabel} centerCoords={user?.latitude && user?.longitude ? [user.latitude, user.longitude] : null} />
                 </div>
               </motion.div>
             )}

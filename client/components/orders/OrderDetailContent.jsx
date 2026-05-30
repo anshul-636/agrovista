@@ -24,6 +24,7 @@ export default function OrderDetailContent() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const currentUserId = user?.id || user?._id || null;
 
   const [status, setStatus] = useState("");
   const [timeline, setTimeline] = useState([]);
@@ -113,8 +114,25 @@ export default function OrderDetailContent() {
         createdAt: msg.createdAt || msg.created_at || new Date().toISOString(),
         id: msg.id || msg._id || `msg-${Math.random()}`,
       };
-      
-      setChatMessages(prev => [...prev, sanitizedMsg]);
+
+      setChatMessages(prev => {
+        const existingIndex = prev.findIndex(m => String(m.id) === String(sanitizedMsg.id));
+        if (existingIndex !== -1) {
+          return prev.map(m => String(m.id) === String(sanitizedMsg.id) ? sanitizedMsg : m);
+        }
+
+        const optimisticIndex = prev.findIndex(
+          m => String(m.senderId) === String(sanitizedMsg.senderId) &&
+            String(m.content || "").trim() === String(sanitizedMsg.content || "").trim() &&
+            m.status === 'sending'
+        );
+
+        if (optimisticIndex !== -1) {
+          return prev.map((m, index) => index === optimisticIndex ? sanitizedMsg : m);
+        }
+
+        return [...prev, sanitizedMsg];
+      });
       
       // Auto scroll chat
       setTimeout(() => {
@@ -124,7 +142,7 @@ export default function OrderDetailContent() {
       }, 100);
 
       // Flash Toast if not focused on chat or tab
-      if (sanitizedMsg.senderId !== user?.id) {
+      if (String(sanitizedMsg.senderId) !== String(currentUserId)) {
         toast.info(`New message from ${sanitizedMsg.senderName}`, { icon: "💬" });
       }
     };
@@ -140,7 +158,7 @@ export default function OrderDetailContent() {
       socket.off("chat:message", handleNewMessage);
       clearTimeout(onlineTimer);
     };
-  }, [id, user?.id, mounted]);
+  }, [id, currentUserId, mounted]);
 
   // Scroll to bottom on load
   useEffect(() => {
@@ -189,6 +207,26 @@ export default function OrderDetailContent() {
     }
   });
 
+  const cancelOrderMutation = useMutation({
+    mutationFn: () => apiService.cancelOrder(id),
+    onSuccess: (res) => {
+      if (res.success && res.data) {
+        setStatus(res.data.status);
+        setTimeline(res.data.timeline || [{ status: res.data.status, title: "Status Updated", timestamp: new Date().toISOString() }]);
+        queryClient.invalidateQueries(["order", id]);
+        queryClient.invalidateQueries(["buyerOrders"]);
+        queryClient.invalidateQueries(["farmerOrders"]);
+        toast.success("Order cancelled successfully. Stock has been restored.");
+
+        if (socketRef.current) {
+          socketRef.current.emit("order:updated", { orderId: id, status: res.data.status });
+        }
+      } else {
+        toast.error(res.error || "Cancellation failed");
+      }
+    }
+  });
+
   const handleProgressStatus = () => {
     const statusSequence = ["PENDING", "ACCEPTED", "PACKED", "DISPATCHED"];
     const currentIdx = statusSequence.indexOf(status);
@@ -208,7 +246,7 @@ export default function OrderDetailContent() {
     const optimisticMsg = {
       id: `optimistic-${Date.now()}`,
       orderId: id,
-      senderId: user?.id || 'me',
+      senderId: currentUserId || 'me',
       senderName: user?.name || 'You',
       senderRole: user?.role || 'BUYER',
       content: typedMessage.trim(),
@@ -225,8 +263,9 @@ export default function OrderDetailContent() {
       const res = await apiService.sendMessage(id, optimisticMsg.content, imageFile);
       if (res.success && res.data) {
         // Replace optimistic with confirmed message
+        const confirmedMsg = { ...res.data, status: 'sent' };
         setChatMessages(prev => prev.map(m =>
-          m.id === optimisticMsg.id ? { ...res.data, status: 'sent' } : m
+          m.id === optimisticMsg.id ? confirmedMsg : m
         ));
       }
     } catch (err) {
@@ -367,6 +406,19 @@ export default function OrderDetailContent() {
                     disabled={verifyDeliveryMutation.isLoading}
                   >
                     {verifyDeliveryMutation.isLoading ? "Verifying..." : "Verify Delivery & Release Funds"}
+                  </button>
+                )}
+
+                {user?.role === "BUYER" && ["PENDING", "ACCEPTED"].includes(status) && (
+                  <button
+                    onClick={() => {
+                      const confirmed = window.confirm("Cancel this order before it is packed or shipped?");
+                      if (confirmed) cancelOrderMutation.mutate();
+                    }}
+                    className="w-full mt-3 px-4 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition disabled:opacity-50"
+                    disabled={cancelOrderMutation.isLoading}
+                  >
+                    {cancelOrderMutation.isLoading ? "Cancelling..." : "Cancel Order"}
                   </button>
                 )}
               </div>

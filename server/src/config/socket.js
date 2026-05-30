@@ -87,13 +87,18 @@ const initSocket = (httpServer) => {
                     content: content.trim()
                 })
 
-                await message.populate('sender', 'name avatar')
+                await message.populate('sender', 'name avatar role')
 
                 io.to('chat:' + orderId).emit('chat:message', {
-                    _id: message._id,
+                    id: message._id,
+                    orderId,
+                    senderId: message.sender?._id || socket.userId,
+                    senderName: message.sender?.name || 'Unknown',
+                    senderRole: message.sender?.role || 'BUYER',
                     content: message.content,
-                    sender: message.sender,
-                    createdAt: message.createdAt
+                    imageUrl: message.imageUrl || null,
+                    createdAt: message.createdAt,
+                    status: 'sent'
                 })
             } catch (err) {
                 console.error('send:message error:', err.message)

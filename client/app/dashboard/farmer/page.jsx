@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import {
   TrendingUp,
@@ -30,11 +31,23 @@ import RevenueChart from "../../../components/dashboard/RevenueChart";
 import TopProducts from "../../../components/dashboard/TopProducts";
 import CategoryDonut from "../../../components/dashboard/CategoryDonut";
 import { toast } from "sonner";
+import { useSocketStore } from "../../../store/socketStore";
+
+const NearbyFarmsMap = dynamic(() => import("../../../components/map/NearbyFarmsMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[320px] w-full bg-gray-100 dark:bg-zinc-900 rounded-3xl animate-pulse flex items-center justify-center text-xs text-agri-brown font-bold">
+      Loading Farm Map...
+    </div>
+  ),
+});
 
 export default function FarmerDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, isAuthenticated } = useAuthStore();
+  const { initSocket, joinRoom, socket } = useSocketStore();
+  const locationLabel = user?.location?.trim() || "Your location";
 
   // Route security
   useEffect(() => {
@@ -44,6 +57,33 @@ export default function FarmerDashboard() {
       router.push("/dashboard/buyer");
     }
   }, [isAuthenticated, user, router]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user || user.role !== "FARMER") return;
+
+    initSocket();
+    const farmerId = user.id || user._id;
+    if (farmerId) {
+      joinRoom("user", farmerId);
+    }
+  }, [isAuthenticated, user, initSocket, joinRoom]);
+
+  useEffect(() => {
+    if (!socket || typeof socket.on !== "function") return;
+
+    const handleOrdersChanged = () => {
+      queryClient.invalidateQueries(["farmerOrders"]);
+      queryClient.invalidateQueries(["farmerAnalytics"]);
+    };
+
+    socket.on("order:new", handleOrdersChanged);
+    socket.on("order:updated", handleOrdersChanged);
+
+    return () => {
+      socket.off("order:new", handleOrdersChanged);
+      socket.off("order:updated", handleOrdersChanged);
+    };
+  }, [socket, queryClient]);
 
   // Fetch farmer analytics
   const { data: analyticsRes, isLoading: analyticsLoading } = useQuery({
@@ -66,6 +106,13 @@ export default function FarmerDashboard() {
     enabled: !!user && user.role === "FARMER"
   });
 
+  // Fetch farmer products (My Listings)
+  const { data: farmerProductsRes, isLoading: farmerProductsLoading } = useQuery({
+    queryKey: ["farmerProducts"],
+    queryFn: () => apiService.getProducts({ farmer: 'mine' }),
+    enabled: !!user && user.role === "FARMER"
+  });
+
   // Order status mutations
   const updateStatusMutation = useMutation({
     mutationFn: ({ orderId, status }) => apiService.updateOrderStatus(orderId, status),
@@ -79,6 +126,25 @@ export default function FarmerDashboard() {
       }
     }
   });
+
+  // Delete product mutation (used in My Listings)
+  const queryClientLocal = queryClient;
+  const deleteProductMutation = useMutation({
+    mutationFn: (productId) => apiService.deleteProduct(productId),
+    onSuccess: (res, vars) => {
+      toast.success('Product removed from marketplace')
+      queryClientLocal.invalidateQueries(['farmerProducts'])
+      queryClientLocal.invalidateQueries(['products'])
+      queryClientLocal.invalidateQueries(['farmerAnalytics'])
+      // emit socket event
+      if (socket && typeof socket.emit === 'function') {
+        socket.emit('product:deleted', { productId: vars })
+      }
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to delete product')
+    }
+  })
 
   const handleOrderAction = (orderId, action) => {
     const status = action === "ACCEPT" ? "ACCEPTED" : "CANCELLED";
@@ -97,6 +163,7 @@ export default function FarmerDashboard() {
   };
   const orders = ordersRes?.data || [];
   const auctions = auctionsRes?.data?.filter(a => a.farmerId === user.id) || [];
+  const farmerProducts = Array.isArray(farmerProductsRes?.data) ? farmerProductsRes.data : [];
 
   return (
     <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col text-current transition-colors">
@@ -157,7 +224,7 @@ export default function FarmerDashboard() {
               },
               {
                 title: "Active Products",
-                value: analytics?.summary?.activeProducts || 0,
+                value: analytics?.summary?.activeProducts ?? analytics?.totalProducts ?? 0,
                 desc: "Listed on marketplace",
                 icon: ShoppingBag,
                 color: "text-agri-brown bg-agri-brown/10"
@@ -199,7 +266,7 @@ export default function FarmerDashboard() {
                 <CardDescription>7-Day Daily Sales Performance</CardDescription>
               </CardHeader>
               <CardContent>
-                <RevenueChart data={analytics?.revenueTrend || []} />
+                <RevenueChart data={analytics?.revenueTrend || analytics?.revenueByDay || []} />
               </CardContent>
             </Card>
 
@@ -208,6 +275,18 @@ export default function FarmerDashboard() {
               <WeatherWidget />
             </div>
           </div>
+
+          <Card className="border-agri-green/5 overflow-hidden">
+            <CardHeader className="border-none pb-0">
+              <CardTitle className="text-base font-bold text-agri-green">Your Farm Location</CardTitle>
+              <CardDescription>Centered on {locationLabel}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[360px] w-full rounded-3xl overflow-hidden border border-agri-green/5">
+                <NearbyFarmsMap location={user?.location || ""} fallbackLabel={locationLabel} centerCoords={user?.latitude && user?.longitude ? [user.latitude, user.longitude] : null} />
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Top Products Bar Chart */}
@@ -260,6 +339,44 @@ export default function FarmerDashboard() {
                     <span className="text-agri-green-dark dark:text-agri-green-light font-extrabold">&lt; 4 hours</span>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          
+            {/* My Listings compact */}
+            <Card className="lg:col-span-2 border-agri-green/5">
+              <CardHeader className="flex items-center justify-between pb-4">
+                <div>
+                  <CardTitle className="text-base font-bold text-agri-green">My Listings</CardTitle>
+                  <CardDescription>Manage your active product listings</CardDescription>
+                </div>
+                <Button variant="outline" onClick={() => router.push('/products?farmer=mine')} className="py-1 px-3 text-[10px] rounded-lg font-bold">Manage All</Button>
+              </CardHeader>
+              <CardContent>
+                {farmerProducts.length === 0 ? (
+                  <p className="text-xs text-center p-8 text-agri-brown font-semibold">No active listings.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {farmerProducts.slice(0,4).map(p => (
+                      <div key={p.id} className="flex items-center justify-between p-3 bg-agri-green/5 rounded-2xl border border-agri-green/5">
+                        <div>
+                          <div className="font-extrabold text-agri-green-dark truncate max-w-[240px]">{p.name}</div>
+                          <div className="text-[10px] text-agri-brown">₹{p.price} / {p.unit} • {p.quantity} {p.unit}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" onClick={() => router.push(`/products/${p.id}`)} className="text-[10px]">View</Button>
+                          <button
+                            onClick={() => {
+                              const ok = window.confirm('Remove this product from marketplace?')
+                              if (!ok) return
+                              deleteProductMutation.mutate(p.id)
+                            }}
+                            className="py-1 px-3 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700"
+                          >Remove</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

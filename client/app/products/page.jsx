@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, Suspense } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, SlidersHorizontal, MapPin, Star, ShieldCheck, Heart, Tractor, ArrowUpDown } from "lucide-react";
 import Header from "../../components/shared/Header";
 import { Card, CardContent } from "../../components/ui/Card";
@@ -9,6 +9,9 @@ import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
 import Input from "../../components/ui/Input";
 import { apiService } from "../../lib/api";
+import { useAuthStore } from "../../store/authStore";
+import { useSocketStore } from "../../store/socketStore";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -36,6 +39,11 @@ function ProductListingContent() {
   });
 
   const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
+  const { user } = useAuthStore();
+  const { socket } = useSocketStore();
+  const queryClient = useQueryClient();
+
+  const getProductId = (product) => product.id || product._id;
 
   // Client side sorting
   const sortedProducts = [...products].sort((a, b) => {
@@ -143,12 +151,12 @@ function ProductListingContent() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {sortedProducts.map((prod) => (
-              <Card key={prod.id} hoverEffect className="border-agri-green/5 p-4 flex flex-col justify-between h-[420px]">
+              <Card key={getProductId(prod)} hoverEffect className="border-agri-green/5 p-4 flex flex-col justify-between h-[420px]">
                 <div className="space-y-4 w-full">
                   {/* Card Image */}
                   <div className="relative h-40 w-full rounded-2xl overflow-hidden bg-agri-green/10 group">
                     <img
-                      src={prod.images[0]}
+                      src={prod.images[0] || "https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"}
                       alt={prod.name}
                       className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
@@ -167,14 +175,14 @@ function ProductListingContent() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-1 text-[10px] font-semibold text-agri-brown">
                       <MapPin className="w-3.5 h-3.5 text-agri-brown shrink-0" />
-                      <span className="truncate">{prod.farmerLocation}</span>
+                      <span className="truncate">{prod.farmerLocation || prod.location || "Location not available"}</span>
                     </div>
-                    <Link href={`/products/${prod.id}`}>
+                    <Link href={`/products/${getProductId(prod)}`}>
                       <h4 className="text-sm font-extrabold text-agri-green-dark dark:text-agri-green-light hover:underline truncate">
                         {prod.name}
                       </h4>
                     </Link>
-                    <p className="text-[10px] text-agri-brown truncate">Grower: {prod.farmerName}</p>
+                    <p className="text-[10px] text-agri-brown truncate">Grower: {prod.farmerName || prod.farmer?.name || "Unknown"}</p>
                   </div>
                 </div>
 
@@ -195,11 +203,42 @@ function ProductListingContent() {
                     </div>
                   </div>
 
-                  <Link href={`/products/${prod.id}`} className="block w-full">
-                    <Button variant="outline" className="w-full py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1">
-                      View details
-                    </Button>
-                  </Link>
+                  <div className="flex gap-2">
+                    <Link href={`/products/${getProductId(prod)}`} className="flex-1">
+                      <Button variant="outline" className="w-full py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1">
+                        View details
+                      </Button>
+                    </Link>
+
+                    {/* Farmer-only delete button */}
+                    {(String(prod.farmerId) === String(user?.id) || String(prod.farmer?._id) === String(user?.id) || new URLSearchParams(window.location.search).get('farmer') === 'mine') && (
+                      <button
+                        onClick={async () => {
+                          const ok = window.confirm('Remove this product from marketplace? This will delete the listing.')
+                          if (!ok) return
+                          try {
+                            await apiService.deleteProduct(getProductId(prod))
+                            toast.success('Product removed from marketplace')
+                            // refetch products & farmer analytics + farmer products lists
+                            queryClient.invalidateQueries(['products'])
+                            queryClient.invalidateQueries(['farmerAnalytics'])
+                            queryClient.invalidateQueries(['farmerProducts'])
+                            // notify via socket so live clients can update
+                            if (socket && typeof socket.emit === 'function') {
+                              socket.emit('product:deleted', { productId: getProductId(prod) })
+                            }
+                          } catch (err) {
+                            console.error('Delete failed', err)
+                            toast.error(err?.response?.data?.message || err?.message || 'Delete failed')
+                          }
+                        }}
+                        title="Remove product"
+                        className="py-2 px-3 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
                 </div>
               </Card>
             ))}

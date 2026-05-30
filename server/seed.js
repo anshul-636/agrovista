@@ -3,6 +3,11 @@ const mongoose = require('mongoose')
 const bcrypt = require('bcryptjs')
 const cloudinary = require('cloudinary').v2
 
+if (process.env.ALLOW_SEED !== 'true' && !process.argv.includes('--allow-seed')) {
+    console.log('Seed script is disabled by default. Set ALLOW_SEED=true or pass --allow-seed to run it intentionally.')
+    process.exit(0)
+}
+
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,

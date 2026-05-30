@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 export default function RevenueChart({ data = [] }) {
   const [mounted, setMounted] = useState(false);
+  const hasData = Array.isArray(data) && data.length > 0 && data.some((item) => Number(item?.revenue || 0) > 0);
 
   useEffect(() => {
     setMounted(true);
@@ -14,6 +15,17 @@ export default function RevenueChart({ data = [] }) {
     return (
       <div className="h-64 w-full flex items-center justify-center bg-gray-50/50 dark:bg-zinc-900/30 rounded-2xl animate-pulse">
         <span className="text-xs text-agri-brown">Loading revenue charts...</span>
+      </div>
+    );
+  }
+
+  if (!hasData) {
+    return (
+      <div className="h-64 w-full flex items-center justify-center rounded-2xl border border-dashed border-agri-green/20 bg-gray-50/60 dark:bg-zinc-900/30 px-6 text-center">
+        <div>
+          <p className="text-sm font-semibold text-agri-brown">No delivered sales yet</p>
+          <p className="mt-1 text-xs text-gray-500">Revenue will appear here once orders are completed.</p>
+        </div>
       </div>
     );
   }
