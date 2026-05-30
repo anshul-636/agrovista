@@ -27,9 +27,21 @@ export function getSocket() {
     });
     socketToken = token;
 
-    socketInstance.on("connect_error", (error) => {
-      console.warn("[Socket] Connection error.", error.message);
-    });
+      socketInstance.on("connect_error", (error) => {
+        try {
+          console.error("[Socket] Connection error:", error, {
+            message: error.message,
+            data: error.data || null
+          });
+        } catch (e) {
+          console.error("[Socket] Connection error (failed to stringify):", error);
+        }
+      });
+
+      // expose for quick debugging in browser console
+      try {
+        if (typeof window !== 'undefined') window.__AGROVISTA_SOCKET__ = socketInstance;
+      } catch (e) {}
 
     socketInstance.on("disconnect", () => {
       socketToken = localStorage.getItem("agrovista_token");

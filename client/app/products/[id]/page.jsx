@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from 'next/image'
+import RawImage from '../../../components/ui/RawImage'
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MapPin, ShieldCheck, Heart, ArrowLeft, Star, ShoppingBag, Plus, Minus, UserCheck } from "lucide-react";
@@ -156,7 +156,7 @@ export default function ProductDetailPage() {
             <div className="space-y-4">
               {/* Active Image */}
               <div className="relative h-96 w-full rounded-[2rem] overflow-hidden border border-agri-green/5 bg-agri-green/5 shadow-md">
-                <Image
+                <RawImage
                   src={product.images[activeImageIdx]}
                   alt={product.name}
                   width={1200}
@@ -188,7 +188,7 @@ export default function ProductDetailPage() {
                         activeImageIdx === idx ? "border-agri-green" : "border-transparent"
                       }`}
                     >
-                      <Image src={img} alt={product.name || ''} width={160} height={120} unoptimized className="w-full h-full object-cover" />
+                        <RawImage src={img} alt={product.name || ''} width={160} height={120} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>

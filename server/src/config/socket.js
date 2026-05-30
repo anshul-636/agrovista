@@ -40,10 +40,20 @@ const initSocket = (httpServer) => {
         socket.on('join:auction', ({ auctionId }) => {
             socket.join('auction:' + auctionId)
             console.log('User', socket.userId, 'joined auction:', auctionId)
+            try {
+                const room = io.sockets.adapter.rooms.get('auction:' + auctionId)
+                const count = room ? room.size : 0
+                io.to('auction:' + auctionId).emit('auction:participants', { auctionId, count })
+            } catch (e) {}
         })
 
         socket.on('leave:auction', ({ auctionId }) => {
             socket.leave('auction:' + auctionId)
+            try {
+                const room = io.sockets.adapter.rooms.get('auction:' + auctionId)
+                const count = room ? room.size : 0
+                io.to('auction:' + auctionId).emit('auction:participants', { auctionId, count })
+            } catch (e) {}
         })
 
 
@@ -108,6 +118,16 @@ const initSocket = (httpServer) => {
         // ── DISCONNECT ───────────────────────────────
         socket.on('disconnect', () => {
             console.log('Socket disconnected: user', socket.userId)
+            // Notify auction rooms this socket was in about updated participant counts
+            try {
+                for (const r of socket.rooms) {
+                    if (typeof r === 'string' && r.startsWith('auction:')) {
+                        const room = io.sockets.adapter.rooms.get(r)
+                        const count = room ? room.size : 0
+                        io.to(r).emit('auction:participants', { auctionId: r.replace('auction:', ''), count })
+                    }
+                }
+            } catch (e) {}
         })
     })
 

@@ -47,6 +47,12 @@ const normalizeAuction = (item) => {
     farmerName: item.farmerName || item.farmer?.name || "Unknown",
     farmerLocation: item.farmerLocation || item.farmer?.location || "India",
     images: Array.isArray(item.images) ? item.images : item.image ? [item.image] : [],
+    // server uses `quantity`, UI expects `lotSize` in several places — map both
+    lotSize: item.lotSize || item.quantity || 0,
+    quantity: Number(item.quantity || item.lotSize || 0),
+    // numeric fields
+    startingPrice: Number(item.startingPrice || 0),
+    currentBid: item.currentBid == null ? (item.startingPrice ? Number(item.startingPrice) : null) : Number(item.currentBid),
   };
 };
 
@@ -228,9 +234,9 @@ export const apiService = {
   },
 
   // Auctions Operations
-  getAuctions: async () => {
+  getAuctions: async (filters = {}) => {
     try {
-      const res = await api.get("/auctions");
+      const res = await api.get("/auctions", { params: filters });
       const payload = unwrapData(res);
       return {
         success: true,
@@ -283,11 +289,40 @@ export const apiService = {
 
   createAuction: async (aucData) => {
     try {
-      const res = await api.post("/auctions", aucData);
+      let res;
+      // if caller passed a FormData (file upload), post with multipart/form-data
+      if (typeof FormData !== 'undefined' && aucData instanceof FormData) {
+        res = await api.post("/auctions", aucData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      } else {
+        res = await api.post("/auctions", aucData);
+      }
       const payload = unwrapData(res);
       return { success: true, data: normalizeAuction(payload) };
     } catch (e) {
       throw e;
+    }
+  },
+
+  deleteAuction: async (id) => {
+    try {
+      const res = await api.delete(`/auctions/${id}`);
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      const message = e?.response?.data?.message || e?.message || 'Failed to delete auction';
+      return { success: false, error: message };
+    }
+  },
+
+  placeBid: async (auctionId, amount) => {
+    try {
+      const res = await api.post(`/auctions/${auctionId}/bid`, { amount });
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      // return structured error for UI
+      const message = e?.response?.data?.message || e?.message || 'Failed to place bid';
+      return { success: false, error: message };
     }
   },
 

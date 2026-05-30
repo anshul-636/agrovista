@@ -3,6 +3,7 @@ const ApiResponse = require('../../utils/ApiResponse')
 const ApiError = require('../../utils/ApiError')
 const {
     createAuction,
+    deleteAuction,
     getAllAuctions,
     getAuctionById,
     placeBid,
@@ -40,4 +41,9 @@ const bid = asyncHandler(async (req, res) => {
     res.status(201).json(new ApiResponse(201, result, 'Bid placed successfully'))
 })
 
-module.exports = { create, getAll, getMine, getOne, bid }
+const remove = asyncHandler(async (req, res) => {
+    const result = await deleteAuction(req.params.id, req.user._id)
+    res.status(200).json(new ApiResponse(200, result, 'Auction deleted successfully'))
+})
+
+module.exports = { create, getAll, getMine, getOne, bid, remove }

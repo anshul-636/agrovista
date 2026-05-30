@@ -77,7 +77,7 @@ api.interceptors.request.use((config) => {
 ```
 
 ### Mock Fallback / Standalone Emulation
-To make client-side testing seamless, the `apiService` handles connection errors gracefully. If your backend is offline, the client will **fallback to in-memory database mockups**, allowing you to create listings, update orders, and trigger simulated price suggestions without a running server.
+This project no longer includes any client-side in-memory mock databases or simulated backend engines. The frontend requires a running backend for full functionality; if the backend is unavailable the UI will show clean empty or offline states rather than synthesizing data.
 
 ---
 
@@ -201,7 +201,7 @@ Every standard JSON payload returned by the server must contain:
 
 Real-time interactions (auctions, chats, order updates, notifications) use WebSockets via Socket.IO client helpers in [client/lib/socket.js](file:///c:/Users/kushw/OneDrive/Desktop/agrovista/client/lib/socket.js).
 
-If connection attempts to `process.env.NEXT_PUBLIC_SOCKET_URL` time out or fail, the manager instantiates a simulated `MockSocket` wrapper. The mock engine triggers automatic competitor counterbids and automated reply patterns in chat rooms, keeping the UI interactive.
+If connection attempts to `process.env.NEXT_PUBLIC_SOCKET_URL` time out or fail, the client will not instantiate simulated socket engines. Real-time features depend on an available backend; the UI will present an offline state and queue no simulated events.
 
 ### WebSocket Action Map
 

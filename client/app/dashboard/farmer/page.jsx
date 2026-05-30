@@ -17,7 +17,8 @@ import {
   XCircle,
   ShieldCheck,
   Zap,
-  ArrowRight
+  ArrowRight,
+  Trash2
 } from "lucide-react";
 import { useAuthStore } from "../../../store/authStore";
 import { apiService } from "../../../lib/api";
@@ -143,6 +144,23 @@ export default function FarmerDashboard() {
     },
     onError: (err) => {
       toast.error(err?.response?.data?.message || err?.message || 'Failed to delete product')
+    }
+  })
+
+  const deleteAuctionMutation = useMutation({
+    mutationFn: (auctionId) => apiService.deleteAuction(auctionId),
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success('Auction deleted successfully')
+        queryClientLocal.invalidateQueries(['farmerAuctions'])
+        queryClientLocal.invalidateQueries(['auctions'])
+        queryClientLocal.invalidateQueries(['farmerAnalytics'])
+      } else {
+        toast.error(res.error || 'Failed to delete auction')
+      }
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to delete auction')
     }
   })
 
@@ -517,6 +535,17 @@ export default function FarmerDashboard() {
                         <p className="text-[10px] text-agri-brown uppercase font-bold">High Bid</p>
                         <p className="text-sm font-black text-agri-green">₹{auc.currentBid}/kg</p>
                       </div>
+                      <button
+                        onClick={() => {
+                          const ok = window.confirm('Delete this auction? This will remove the room and bid history.')
+                          if (!ok) return
+                          deleteAuctionMutation.mutate(auc.id)
+                        }}
+                        className="ml-3 p-2 rounded-full text-red-600 hover:bg-red-50 transition"
+                        title="Delete Auction"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   ))
                 )}

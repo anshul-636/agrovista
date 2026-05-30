@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, Suspense } from "react";
-import Image from 'next/image'
+import RawImage from '../../components/ui/RawImage'
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, SlidersHorizontal, MapPin, Star, ShieldCheck, Heart, Tractor, ArrowUpDown } from "lucide-react";
 import Header from "../../components/shared/Header";
@@ -156,12 +156,11 @@ function ProductListingContent() {
                 <div className="space-y-4 w-full">
                   {/* Card Image */}
                   <div className="relative h-40 w-full rounded-2xl overflow-hidden bg-agri-green/10 group">
-                    <Image
+                    <RawImage
                       src={prod.images[0] || "https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"}
                       alt={prod.name}
                       width={600}
                       height={240}
-                      unoptimized
                       className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     {prod.isOrganic && (

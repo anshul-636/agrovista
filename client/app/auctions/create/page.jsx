@@ -22,8 +22,12 @@ export default function CreateAuctionPage() {
   const [productName, setProductName] = useState("");
   const [startingPrice, setStartingPrice] = useState("");
   const [unit, setUnit] = useState("kg");
+  const [category, setCategory] = useState("VEGETABLES");
   const [lotSize, setLotSize] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("30");
+  const [imageFile, setImageFile] = useState(null);
+  const [startInput, setStartInput] = useState("");
+  const [endInput, setEndInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   // Redirect if not authorized farmer
@@ -46,6 +50,11 @@ export default function CreateAuctionPage() {
         toast.error("Failed to create auction.");
       }
     }
+    ,
+    onError: (err) => {
+      const msg = err?.response?.data?.message || err?.message || "Failed to create auction.";
+      toast.error(msg);
+    }
   });
 
   const handleSubmit = (e) => {
@@ -55,12 +64,47 @@ export default function CreateAuctionPage() {
       return;
     }
 
+    // Determine start/end times: prefer explicit inputs, otherwise compute from duration
+    let startTimeISO, endTimeISO;
+    if (startInput) {
+      startTimeISO = new Date(startInput).toISOString();
+    }
+    if (endInput) {
+      endTimeISO = new Date(endInput).toISOString();
+    }
+    if (!startTimeISO || !endTimeISO) {
+      const now = new Date();
+      const start = startTimeISO ? new Date(startTimeISO) : new Date(now.getTime() + 60 * 1000);
+      const end = endTimeISO ? new Date(endTimeISO) : new Date(start.getTime() + Number(durationMinutes) * 60 * 1000);
+      startTimeISO = start.toISOString();
+      endTimeISO = end.toISOString();
+    }
+
+    // If an image file is selected, send multipart/form-data
+    if (imageFile) {
+      const fd = new FormData();
+      fd.append('productName', productName);
+      fd.append('description', productName);
+      fd.append('category', category);
+      fd.append('quantity', String(Number(lotSize)));
+      fd.append('unit', unit);
+      fd.append('startingPrice', String(Number(startingPrice)));
+      fd.append('startTime', startTimeISO);
+      fd.append('endTime', endTimeISO);
+      fd.append('image', imageFile);
+      createAuctionMutation.mutate(fd);
+      return;
+    }
+
     createAuctionMutation.mutate({
       productName,
-      startingPrice: Number(startingPrice),
+      description: productName,
+      category,
+      quantity: Number(lotSize),
       unit,
-      lotSize: Number(lotSize),
-      durationMinutes: Number(durationMinutes)
+      startingPrice: Number(startingPrice),
+      startTime: startTimeISO,
+      endTime: endTimeISO
     });
   };
 
@@ -138,17 +182,35 @@ export default function CreateAuctionPage() {
                     required
                   />
                   <Select
-                    label="Bidding Duration"
-                    id="durationMinutes"
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(e.target.value)}
+                    label="Category"
+                    id="category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
                     options={[
-                      { value: "15", label: "15 Minutes (Fast Trade)" },
-                      { value: "30", label: "30 Minutes" },
-                      { value: "60", label: "1 Hour" },
-                      { value: "120", label: "2 Hours" }
+                      { value: "VEGETABLES", label: "Vegetables" },
+                      { value: "FRUITS", label: "Fruits" },
+                      { value: "GRAINS", label: "Grains" },
+                      { value: "DAIRY", label: "Dairy" },
+                      { value: "HERBS", label: "Herbs" },
+                      { value: "OTHER", label: "Other" }
                     ]}
                   />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  <label className="text-xs font-semibold text-agri-green-dark">Optional: Upload Product Image</label>
+                  <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-agri-green-dark">Start Date & Time (optional)</label>
+                      <input type="datetime-local" value={startInput} onChange={(e) => setStartInput(e.target.value)} className="w-full p-2 rounded border" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-agri-green-dark">End Date & Time (optional)</label>
+                      <input type="datetime-local" value={endInput} onChange={(e) => setEndInput(e.target.value)} className="w-full p-2 rounded border" />
+                    </div>
+                  </div>
                 </div>
               </Card>
 

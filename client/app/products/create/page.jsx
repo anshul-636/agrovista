@@ -241,7 +241,13 @@ export default function CreateProductPage() {
                   <div className="space-y-3">
                     <span className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">Crop Images</span>
                     <div className="border-2 border-dashed border-agri-green/15 dark:border-agri-green-light/15 bg-white/40 dark:bg-black/10 rounded-2xl p-6 text-center space-y-2">
-                      <Image className="w-10 h-10 text-agri-brown mx-auto" />
+                        <div className="w-10 h-10 text-agri-brown mx-auto">
+                          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto">
+                            <path d="M12 2L15 8H9L12 2Z" fill="#6B8E23" />
+                            <rect x="4" y="10" width="16" height="8" rx="1" fill="#CDECB5" />
+                            <path d="M4 18L6 22H18L20 18" stroke="#6B8E23" strokeWidth="1" />
+                          </svg>
+                        </div>
                       <p className="text-xs text-agri-brown font-semibold">Drag and drop images or photos here to upload</p>
                       <p className="text-[10px] text-agri-brown-light">Supports JPG, PNG formats up to 5MB. Handled via Cloudinary</p>
                     </div>

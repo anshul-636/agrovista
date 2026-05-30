@@ -58,6 +58,33 @@ const createAuction = async (farmerId, data, file) => {
 }
 
 // ──────────────────────────────────────────────
+// DELETE AUCTION (FARMER)
+// ──────────────────────────────────────────────
+const deleteAuction = async (auctionId, farmerId) => {
+    const auction = await Auction.findById(auctionId)
+
+    if (!auction) throw new ApiError(404, 'Auction not found')
+
+    if (auction.farmer.toString() !== farmerId.toString()) {
+        throw new ApiError(403, 'You can only delete your own auction')
+    }
+
+    await Bid.deleteMany({ auction: auctionId })
+    await Auction.findByIdAndDelete(auctionId)
+
+    try {
+        const { getIO } = require('../../config/socket')
+        getIO().to('auction:' + auctionId.toString()).emit('auction:deleted', {
+            auctionId: auctionId.toString()
+        })
+    } catch (err) {
+        console.error('Socket auction delete emit failed:', err.message)
+    }
+
+    return { deleted: true, auctionId: auctionId.toString() }
+}
+
+// ──────────────────────────────────────────────
 // GET ALL AUCTIONS
 // ──────────────────────────────────────────────
 const getAllAuctions = async (query) => {
@@ -182,6 +209,7 @@ const getFarmerAuctions = async (farmerId) => {
 
 module.exports = {
     createAuction,
+    deleteAuction,
     getAllAuctions,
     getAuctionById,
     placeBid,

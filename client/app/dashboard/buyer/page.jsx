@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import dynamic from "next/dynamic";
-import Image from 'next/image'
+import RawImage from '../../../components/ui/RawImage'
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShoppingBag,
@@ -335,7 +335,7 @@ function BuyerDashboardContent() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {recommendations.map((prod) => (
                       <Card key={prod.id} hoverEffect className="border-agri-green/5 p-4 space-y-3">
-                            <Image
+                            <RawImage
                               src={prod.images[0]}
                               alt={prod.name}
                               width={400}
