@@ -1,18 +1,24 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
+import { useAuthStore } from "../store/authStore";
 
 export default function AppProviders({ children }) {
+  const hydrate = useAuthStore((s) => s.hydrate);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
   const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Data is immediately considered stale — so invalidateQueries() from
-            // sockets always triggers a fresh fetch instead of being ignored.
+           
             staleTime: 0,
 
             // Keep data in memory for 5 minutes after component unmounts
@@ -27,11 +33,8 @@ export default function AppProviders({ children }) {
             // Retry failed requests once before showing error
             retry: 1,
 
-            // Background polling every 30 seconds as safety net
-            // (catches anything sockets might have missed)
             refetchInterval: 1000 * 30,
 
-            // Only poll when the tab is visible — saves bandwidth
             refetchIntervalInBackground: false,
           },
         },

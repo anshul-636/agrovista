@@ -19,6 +19,10 @@ export default function Header() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // ─── SOCKET: global notification + order listeners ──────────────────────────
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -133,107 +137,115 @@ export default function Header() {
 
           {/* Right Action Items */}
           <div className="hidden md:flex items-center gap-4">
-            {/* Theme Toggle */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="p-2.5 rounded-2xl bg-agri-green/5 dark:bg-agri-green-light/5 text-agri-green dark:text-agri-green-light hover:bg-agri-green/10 transition"
-              aria-label="Toggle Theme"
-            >
-              {theme === "dark" ? (
-                <Sun className="w-5 h-5" />
+            {/* ✅ FIX: Theme toggle only renders after mount to avoid sun/moon mismatch */}
+            {mounted && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="p-2.5 rounded-2xl bg-agri-green/5 dark:bg-agri-green-light/5 text-agri-green dark:text-agri-green-light hover:bg-agri-green/10 transition"
+                aria-label="Toggle Theme"
+              >
+                {theme === "dark" ? (
+                  <Sun className="w-5 h-5" />
+                ) : (
+                  <Moon className="w-5 h-5" />
+                )}
+              </motion.button>
+            )}
+
+            {/* ✅ FIX: Auth UI only renders after mount to avoid isAuthenticated mismatch */}
+            {mounted && (
+              isAuthenticated && user ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="flex items-center gap-2 focus:outline-none"
+                  >
+                    <img
+                      src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"}
+                      alt={user.name}
+                      className="w-10 h-10 rounded-2xl object-cover ring-2 ring-agri-green/20"
+                    />
+                  </button>
+
+                  <AnimatePresence>
+                    {profileOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setProfileOpen(false)} />
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute right-0 mt-3 w-56 glass-card rounded-2xl shadow-xl z-20 py-2"
+                        >
+                          <div className="px-4 py-2.5 border-b border-agri-green/5">
+                            <p className="text-xs font-bold text-agri-brown dark:text-gray-400">Signed in as</p>
+                            <p className="text-sm font-black truncate text-agri-green-dark dark:text-agri-green-light">{user.name}</p>
+                            <span className="inline-block mt-1 text-[10px] font-extrabold uppercase bg-agri-green/10 text-agri-green px-2 py-0.5 rounded-full">
+                              {user.role}
+                            </span>
+                          </div>
+
+                          <Link
+                            href="/profile"
+                            onClick={() => setProfileOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 text-sm text-agri-brown dark:text-gray-300 hover:bg-agri-green/5 dark:hover:bg-agri-green-light/5 transition"
+                          >
+                            <User className="w-4 h-4" /> Profile Details
+                          </Link>
+                          <Link
+                            href="/settings"
+                            onClick={() => setProfileOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 text-sm text-agri-brown dark:text-gray-300 hover:bg-agri-green/5 dark:hover:bg-agri-green-light/5 transition"
+                          >
+                            <Settings className="w-4 h-4" /> Account Settings
+                          </Link>
+
+                          <button
+                            onClick={() => {
+                              setProfileOpen(false);
+                              handleLogout();
+                            }}
+                            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-500/5 dark:hover:bg-red-500/10 transition border-t border-agri-green/5 mt-1.5"
+                          >
+                            <LogOut className="w-4 h-4" /> Sign Out
+                          </button>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
               ) : (
-                <Moon className="w-5 h-5" />
-              )}
-            </motion.button>
-
-            {isAuthenticated && user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setProfileOpen(!profileOpen)}
-                  className="flex items-center gap-2 focus:outline-none"
-                >
-                  <img
-                    src={user.avatar || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"}
-                    alt={user.name}
-                    className="w-10 h-10 rounded-2xl object-cover ring-2 ring-agri-green/20"
-                  />
-                </button>
-
-                <AnimatePresence>
-                  {profileOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setProfileOpen(false)} />
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute right-0 mt-3 w-56 glass-card rounded-2xl shadow-xl z-20 py-2"
-                      >
-                        <div className="px-4 py-2.5 border-b border-agri-green/5">
-                          <p className="text-xs font-bold text-agri-brown dark:text-gray-400">Signed in as</p>
-                          <p className="text-sm font-black truncate text-agri-green-dark dark:text-agri-green-light">{user.name}</p>
-                          <span className="inline-block mt-1 text-[10px] font-extrabold uppercase bg-agri-green/10 text-agri-green px-2 py-0.5 rounded-full">
-                            {user.role}
-                          </span>
-                        </div>
-
-                        <Link
-                          href="/profile"
-                          onClick={() => setProfileOpen(false)}
-                          className="flex items-center gap-2 px-4 py-2 text-sm text-agri-brown dark:text-gray-300 hover:bg-agri-green/5 dark:hover:bg-agri-green-light/5 transition"
-                        >
-                          <User className="w-4 h-4" /> Profile Details
-                        </Link>
-                        <Link
-                          href="/settings"
-                          onClick={() => setProfileOpen(false)}
-                          className="flex items-center gap-2 px-4 py-2 text-sm text-agri-brown dark:text-gray-300 hover:bg-agri-green/5 dark:hover:bg-agri-green-light/5 transition"
-                        >
-                          <Settings className="w-4 h-4" /> Account Settings
-                        </Link>
-
-                        <button
-                          onClick={() => {
-                            setProfileOpen(false);
-                            handleLogout();
-                          }}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-500/5 dark:hover:bg-red-500/10 transition border-t border-agri-green/5 mt-1.5"
-                        >
-                          <LogOut className="w-4 h-4" /> Sign Out
-                        </button>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/login"
-                  className="px-4 py-2 text-sm font-semibold text-agri-green dark:text-agri-green-light hover:text-agri-green-dark"
-                >
-                  Log In
-                </Link>
-                <Link
-                  href="/signup"
-                  className="px-5 py-2.5 bg-agri-green hover:bg-agri-green-hover text-white text-sm font-semibold rounded-2xl shadow-md transition"
-                >
-                  Register
-                </Link>
-              </div>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href="/login"
+                    className="px-4 py-2 text-sm font-semibold text-agri-green dark:text-agri-green-light hover:text-agri-green-dark"
+                  >
+                    Log In
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="px-5 py-2.5 bg-agri-green hover:bg-agri-green-hover text-white text-sm font-semibold rounded-2xl shadow-md transition"
+                  >
+                    Register
+                  </Link>
+                </div>
+              )
             )}
           </div>
 
           {/* Mobile Menu Icon */}
           <div className="md:hidden flex items-center gap-3">
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="p-2 rounded-xl bg-agri-green/5 text-agri-green dark:text-agri-green-light"
-            >
-              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </motion.button>
+            {/* ✅ FIX: Theme toggle only renders after mount */}
+            {mounted && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="p-2 rounded-xl bg-agri-green/5 text-agri-green dark:text-agri-green-light"
+              >
+                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </motion.button>
+            )}
 
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -266,52 +278,55 @@ export default function Header() {
                 </Link>
               ))}
 
-              {isAuthenticated ? (
-                <div className="pt-4 border-t border-agri-green/5 space-y-1">
-                  <div className="px-3 py-2 text-sm text-gray-500">
-                    Logged in as <span className="font-bold text-agri-green">{user?.name}</span>
+              {/* ✅ FIX: Auth section in mobile drawer also behind mounted guard */}
+              {mounted && (
+                isAuthenticated ? (
+                  <div className="pt-4 border-t border-agri-green/5 space-y-1">
+                    <div className="px-3 py-2 text-sm text-gray-500">
+                      Logged in as <span className="font-bold text-agri-green">{user?.name}</span>
+                    </div>
+                    <Link
+                      href="/profile"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="block px-3 py-2 text-base font-medium rounded-xl hover:bg-agri-green/5 dark:text-gray-200"
+                    >
+                      Profile
+                    </Link>
+                    <Link
+                      href="/settings"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="block px-3 py-2 text-base font-medium rounded-xl hover:bg-agri-green/5 dark:text-gray-200"
+                    >
+                      Settings
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full text-left block px-3 py-2 text-base font-medium text-red-600 rounded-xl hover:bg-red-50"
+                    >
+                      Sign Out
+                    </button>
                   </div>
-                  <Link
-                    href="/profile"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-base font-medium rounded-xl hover:bg-agri-green/5 dark:text-gray-200"
-                  >
-                    Profile
-                  </Link>
-                  <Link
-                    href="/settings"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-base font-medium rounded-xl hover:bg-agri-green/5 dark:text-gray-200"
-                  >
-                    Settings
-                  </Link>
-                  <button
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      handleLogout();
-                    }}
-                    className="w-full text-left block px-3 py-2 text-base font-medium text-red-600 rounded-xl hover:bg-red-50"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              ) : (
-                <div className="pt-4 border-t border-agri-green/5 flex gap-4">
-                  <Link
-                    href="/login"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex-1 text-center py-2 border border-agri-green/20 rounded-xl text-agri-green font-medium"
-                  >
-                    Log In
-                  </Link>
-                  <Link
-                    href="/signup"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex-1 text-center py-2 bg-agri-green text-white rounded-xl font-medium"
-                  >
-                    Register
-                  </Link>
-                </div>
+                ) : (
+                  <div className="pt-4 border-t border-agri-green/5 flex gap-4">
+                    <Link
+                      href="/login"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex-1 text-center py-2 border border-agri-green/20 rounded-xl text-agri-green font-medium"
+                    >
+                      Log In
+                    </Link>
+                    <Link
+                      href="/signup"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex-1 text-center py-2 bg-agri-green text-white rounded-xl font-medium"
+                    >
+                      Register
+                    </Link>
+                  </div>
+                )
               )}
             </div>
           </motion.div>

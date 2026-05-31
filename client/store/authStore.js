@@ -1,14 +1,13 @@
 import { create } from "zustand";
 
+// ─── Helpers (safe to call on client only) ───────────────────────────────────
+
 const safeParseUser = () => {
-  if (typeof window === "undefined") return null;
-
-  const rawUser = localStorage.getItem("agrovista_user");
-  if (!rawUser) return null;
-
   try {
+    const rawUser = localStorage.getItem("agrovista_user");
+    if (!rawUser) return null;
     return JSON.parse(rawUser);
-  } catch (error) {
+  } catch {
     localStorage.removeItem("agrovista_user");
     localStorage.removeItem("agrovista_token");
     localStorage.removeItem("agrovista_refresh_token");
@@ -16,17 +15,34 @@ const safeParseUser = () => {
   }
 };
 
-const getStoredValue = (key) => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(key);
-};
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const useAuthStore = create((set, get) => ({
-  user: safeParseUser(),
-  token: getStoredValue("agrovista_token"),
-  refreshToken: getStoredValue("agrovista_refresh_token"),
-  isAuthenticated: !!getStoredValue("agrovista_token"),
-  loading: false,
+  // ✅ FIX: Always start with null / false so the server and client render
+  // identical initial HTML. The real values are loaded from localStorage
+  // inside hydrate(), which is called in a useEffect (client-only).
+  user: null,
+  token: null,
+  refreshToken: null,
+  isAuthenticated: false,
+  loading: true, // true until hydrate() runs — lets UI show a skeleton/spinner
+
+  // Call this once from AppProviders useEffect to sync localStorage → store.
+  hydrate: () => {
+    if (typeof window === "undefined") return;
+
+    const token = localStorage.getItem("agrovista_token");
+    const refreshToken = localStorage.getItem("agrovista_refresh_token");
+    const user = safeParseUser();
+
+    set({
+      user,
+      token,
+      refreshToken,
+      isAuthenticated: !!token,
+      loading: false,
+    });
+  },
 
   login: (user, token, refreshToken = null) => {
     localStorage.setItem("agrovista_user", JSON.stringify(user));
@@ -34,7 +50,13 @@ export const useAuthStore = create((set, get) => ({
     if (refreshToken) {
       localStorage.setItem("agrovista_refresh_token", refreshToken);
     }
-    set({ user, token, refreshToken: refreshToken || get().refreshToken, isAuthenticated: true });
+    set({
+      user,
+      token,
+      refreshToken: refreshToken || get().refreshToken,
+      isAuthenticated: true,
+      loading: false,
+    });
   },
 
   logout: () => {
@@ -51,6 +73,6 @@ export const useAuthStore = create((set, get) => ({
     localStorage.setItem("agrovista_user", JSON.stringify(updatedUser));
     set({ user: updatedUser });
   },
-  
+
   setLoading: (loading) => set({ loading }),
 }));
