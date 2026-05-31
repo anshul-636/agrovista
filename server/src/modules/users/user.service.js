@@ -4,6 +4,7 @@ const Order = require('../../models/Order')
 const Product = require('../../models/Product')
 const Auction = require('../../models/Auction')
 const ApiError = require('../../utils/ApiError')
+const { normalizeLocation } = require('../auth/auth.service')
 
 // ──────────────────────────────────────────────
 // TRUST SCORE CALCULATION
@@ -80,13 +81,30 @@ const getPublicProfile = async (userId) => {
     return { ...user.toJSON(), ...trustData, productCount }
 }
 
+// ──────────────────────────────────────────────
+// PUBLIC STATS
+// ✅ FIX: Use $toLower in the aggregation so that any old un-normalized
+// location strings (e.g. "Kanpur" saved before the auth fix) are still
+// deduplicated correctly when counting distinct cities.
+// ──────────────────────────────────────────────
 const getPublicStats = async () => {
-    const [farmers, buyers, products, auctions, locationResults] = await Promise.all([
+    const [farmers, buyers, products, auctions, cityAgg] = await Promise.all([
         User.countDocuments({ role: 'FARMER' }),
         User.countDocuments({ role: 'BUYER' }),
         Product.countDocuments({ isAvailable: true }),
         Auction.countDocuments({}),
-        User.distinct('location', { location: { $exists: true, $ne: '' } })
+
+        // ✅ FIX: Aggregate with $toLower so "Kanpur" and "kanpur" are the
+        // same city, regardless of how old records were stored.
+        User.aggregate([
+            { $match: { location: { $exists: true, $ne: '' } } },
+            {
+                $group: {
+                    _id: { $toLower: { $trim: { input: '$location' } } }
+                }
+            },
+            { $count: 'total' }
+        ])
     ])
 
     return {
@@ -94,7 +112,7 @@ const getPublicStats = async () => {
         buyers,
         products,
         auctions,
-        cities: locationResults.length
+        cities: cityAgg[0]?.total || 0
     }
 }
 

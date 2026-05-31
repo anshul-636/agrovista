@@ -19,6 +19,10 @@ const generateTokens = (userId) => {
     return { accessToken, refreshToken }
 }
 
+const normalizeLocation = (location) => {
+    if (!location || typeof location !== 'string') return ''
+    return location.trim().toLowerCase()
+}
 
 const registerUser = async ({ name, email, password, role, phone, location }) => {
     const existingUser = await User.findOne({ email: email.toLowerCase() })
@@ -34,7 +38,8 @@ const registerUser = async ({ name, email, password, role, phone, location }) =>
         passwordHash,
         role,
         phone,
-        location
+        
+        location: normalizeLocation(location)
     })
 
     return user
@@ -79,4 +84,4 @@ const refreshAccessToken = async (refreshToken) => {
     return { accessToken, newRefreshToken }
 }
 
-module.exports = { registerUser, loginUser, refreshAccessToken, generateTokens }
+module.exports = { registerUser, loginUser, refreshAccessToken, generateTokens, normalizeLocation }
