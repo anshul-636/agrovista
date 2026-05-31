@@ -13,7 +13,8 @@ const startServer = async () => {
 
     const httpServer = http.createServer(app)
 
-    initSocket(httpServer)
+    const io = initSocket(httpServer)
+    app.set('io', io)
 
     startAuctionCron()
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -8,15 +8,56 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Sun, Moon, LogOut, User, Settings, ShoppingBag, Landmark, MessageSquare, Menu, X } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { useNotificationStore } from "../../store/notificationStore";
+import { getSocket } from "../../lib/socket";
 
 export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const { user, logout, isAuthenticated } = useAuthStore();
-  const { unreadCount } = useNotificationStore();
+  const { unreadCount, addNotification } = useNotificationStore();
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // ─── SOCKET: global notification + order listeners ──────────────────────────
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNotification = (notif) => {
+      addNotification(notif);
+    };
+
+    const handleOrderNew = () => {
+      addNotification({
+        type: "ORDER",
+        title: "New Order Received!",
+        body: "A buyer just placed an order on your listing.",
+        link: "/dashboard/farmer",
+      });
+    };
+
+    const handleOrderUpdated = (data) => {
+      addNotification({
+        type: "ORDER",
+        title: "Order Status Updated",
+        body: `Your order status changed to ${data?.status || "updated"}.`,
+        link: "/orders",
+      });
+    };
+
+    socket.on("notification:new", handleNotification);
+    socket.on("order:new", handleOrderNew);
+    socket.on("order:updated", handleOrderUpdated);
+
+    return () => {
+      socket.off("notification:new", handleNotification);
+      socket.off("order:new", handleOrderNew);
+      socket.off("order:updated", handleOrderUpdated);
+    };
+  }, [isAuthenticated, addNotification]);
+  // ────────────────────────────────────────────────────────────────────────────
 
   const handleLogout = () => {
     logout();

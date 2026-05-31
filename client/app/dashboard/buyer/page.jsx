@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../../../store/authStore";
 import { useNotificationStore } from "../../../store/notificationStore";
+import { useSocketStore } from "../../../store/socketStore";
 import { apiService } from "../../../lib/api";
 import Header from "../../../components/shared/Header";
 import Sidebar from "../../../components/shared/Sidebar";
@@ -46,6 +47,7 @@ function BuyerDashboardContent() {
   const queryClient = useQueryClient();
   const { user, isAuthenticated } = useAuthStore();
   const { notifications } = useNotificationStore();
+  const { initSocket, joinRoom, socket } = useSocketStore();
   const [activeTab, setActiveTab] = useState("overview");
   const locationLabel = user?.location?.trim() || "Your location";
 
@@ -63,6 +65,32 @@ function BuyerDashboardContent() {
       router.push("/dashboard/farmer");
     }
   }, [isAuthenticated, user, router]);
+
+  // ─── SOCKET SETUP ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    initSocket();
+    const buyerId = user.id || user._id;
+    if (buyerId) joinRoom("user", buyerId);
+  }, [isAuthenticated, user, initSocket, joinRoom]);
+
+  useEffect(() => {
+    if (!socket || typeof socket.on !== "function") return;
+
+    const handleOrdersChanged = () => {
+      queryClient.invalidateQueries(["buyerOrders"]);
+      queryClient.invalidateQueries(["orders", "BUYER"]);
+    };
+
+    socket.on("order:updated", handleOrdersChanged);
+    socket.on("order:new", handleOrdersChanged);
+
+    return () => {
+      socket.off("order:updated", handleOrdersChanged);
+      socket.off("order:new", handleOrdersChanged);
+    };
+  }, [socket, queryClient]);
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Fetch products
   const { data: productsRes, isLoading: productsLoading } = useQuery({

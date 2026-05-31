@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { ArrowLeft, Clock, MapPin, Truck, HelpCircle, FileText, ArrowRight } from "lucide-react";
+import { ArrowLeft, Clock, MapPin, Truck, HelpCircle, FileText, ArrowRight, ShieldCheck } from "lucide-react";
 import Header from "../../components/shared/Header";
 import Sidebar from "../../components/shared/Sidebar";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../components/ui/Card";
@@ -13,6 +13,7 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { apiService } from "../../lib/api";
 import { useAuthStore } from "../../store/authStore";
+import { getSocket } from "../../lib/socket";
 import { toast } from "sonner";
 
 export default function OrdersPage() {
@@ -26,6 +27,28 @@ export default function OrdersPage() {
       router.push("/login");
     }
   }, [isAuthenticated, router]);
+
+  // ─── SOCKET SETUP ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const refresh = () => {
+      queryClient.invalidateQueries(["orders", user?.role]);
+      queryClient.invalidateQueries(["buyerOrders"]);
+      queryClient.invalidateQueries(["farmerOrders"]);
+    };
+
+    socket.on("order:updated", refresh);
+    socket.on("order:new", refresh);
+
+    return () => {
+      socket.off("order:updated", refresh);
+      socket.off("order:new", refresh);
+    };
+  }, [user, queryClient]);
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Fetch orders based on role
   const { data: ordersRes, isLoading } = useQuery({
