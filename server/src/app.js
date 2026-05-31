@@ -19,6 +19,13 @@ const userRoutes = require('./modules/users/user.routes')
 
 const app = express()
 
+app.set('trust proxy', 1)
+
+app.use(cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    credentials: true
+}))
+
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
@@ -30,10 +37,7 @@ app.use(session({
 }))
 app.use(passport.initialize())
 app.use(passport.session())
-app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    credentials: true
-}))
+
 
 
 app.get('/health', (req, res) => {
