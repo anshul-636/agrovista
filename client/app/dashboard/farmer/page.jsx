@@ -18,7 +18,9 @@ import {
   ShieldCheck,
   Zap,
   ArrowRight,
-  Trash2
+  Trash2,
+  Star,
+  MessageSquare,
 } from "lucide-react";
 import { useAuthStore } from "../../../store/authStore";
 import { apiService } from "../../../lib/api";
@@ -114,6 +116,13 @@ export default function FarmerDashboard() {
     enabled: !!user && user.role === "FARMER"
   });
 
+  // Fetch reviews this farmer has received from buyers
+  const { data: reviewsRes } = useQuery({
+    queryKey: ["farmerReviews", user?.id],
+    queryFn: () => apiService.getFarmerReviews(user?.id || user?._id),
+    enabled: !!user && user.role === "FARMER",
+  });
+
   // Order status mutations
   const updateStatusMutation = useMutation({
     mutationFn: ({ orderId, status }) => apiService.updateOrderStatus(orderId, status),
@@ -182,6 +191,26 @@ export default function FarmerDashboard() {
   const orders = ordersRes?.data || [];
   const auctions = auctionsRes?.data?.filter(a => a.farmerId === user.id) || [];
   const farmerProducts = Array.isArray(farmerProductsRes?.data) ? farmerProductsRes.data : [];
+
+  // Reviews + per-review order cross-reference
+  const reviewsList = Array.isArray(reviewsRes?.data?.reviews)
+    ? reviewsRes.data.reviews
+    : Array.isArray(reviewsRes?.data)
+    ? reviewsRes.data
+    : [];
+  const reviewSummary = reviewsRes?.data?.avgRating
+    ? { avgRating: reviewsRes.data.avgRating, total: reviewsRes.data.total }
+    : { avgRating: 0, total: reviewsList.length };
+
+  // Match each review's giver (buyer) to the delivered order they came from
+  const reviewsWithOrders = reviewsList.map((review) => {
+    const giverId = review.giver?._id || review.giver?.id || review.giver;
+    const matchedOrder = orders.find(
+      (o) => o.status === "DELIVERED" &&
+        (o.buyer === giverId || o.buyerId === giverId || o.buyer?._id === giverId)
+    );
+    return { ...review, matchedOrder };
+  });
 
   return (
     <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col text-current transition-colors">
@@ -552,6 +581,134 @@ export default function FarmerDashboard() {
               </CardContent>
             </Card>
           </div>
+          {/* ── BUYER REVIEWS SECTION ────────────────────────────────────────── */}
+          <Card className="border-agri-green/5">
+            <CardHeader className="flex flex-row items-start justify-between pb-4">
+              <div>
+                <CardTitle className="text-base font-bold text-agri-green flex items-center gap-2">
+                  <Star className="w-4 h-4 fill-agri-wheat text-agri-wheat" />
+                  Buyer Reviews
+                </CardTitle>
+                <CardDescription>
+                  What buyers said after receiving their orders
+                </CardDescription>
+              </div>
+              {/* Summary pill */}
+              {reviewsWithOrders.length > 0 && (
+                <div className="flex items-center gap-2 bg-agri-green/5 border border-agri-green/10 rounded-2xl px-3 py-2 flex-shrink-0">
+                  <div className="flex items-center gap-0.5">
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} className={`w-3.5 h-3.5 ${s <= Math.round(reviewSummary.avgRating) ? "fill-agri-wheat text-agri-wheat" : "text-agri-brown/20"}`} />
+                    ))}
+                  </div>
+                  <span className="text-xs font-black text-agri-green-dark dark:text-agri-green-light">
+                    {reviewSummary.avgRating > 0 ? reviewSummary.avgRating.toFixed(1) : "—"}
+                  </span>
+                  <span className="text-[10px] text-agri-brown font-semibold">
+                    ({reviewSummary.total} review{reviewSummary.total !== 1 ? "s" : ""})
+                  </span>
+                </div>
+              )}
+            </CardHeader>
+
+            <CardContent>
+              {reviewsWithOrders.length === 0 ? (
+                <div className="text-center py-10 space-y-2">
+                  <div className="w-12 h-12 rounded-2xl bg-agri-wheat/10 flex items-center justify-center mx-auto">
+                    <MessageSquare className="w-6 h-6 text-agri-wheat/50" />
+                  </div>
+                  <p className="text-xs font-bold text-agri-brown">No reviews yet</p>
+                  <p className="text-[10px] text-agri-brown/60">
+                    Reviews appear here after buyers confirm delivery of their orders.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reviewsWithOrders.slice(0, 5).map((review, i) => {
+                    const buyerName = review.giver?.name || "Buyer";
+                    const buyerInitial = buyerName.charAt(0).toUpperCase();
+                    const date = review.createdAt
+                      ? new Date(review.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                      : null;
+
+                    return (
+                      <div key={review._id || review.id || i}
+                        className="flex gap-4 p-4 bg-white/50 dark:bg-white/5 rounded-2xl border border-agri-green/5 hover:border-agri-green/15 transition-all">
+
+                        {/* Buyer avatar */}
+                        <div className="w-10 h-10 rounded-2xl bg-agri-green/10 text-agri-green font-black text-sm flex items-center justify-center flex-shrink-0">
+                          {review.giver?.avatar ? (
+                            <img src={review.giver.avatar} alt={buyerName}
+                              className="w-full h-full rounded-2xl object-cover" />
+                          ) : buyerInitial}
+                        </div>
+
+                        {/* Review content */}
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div>
+                              <p className="text-xs font-extrabold text-agri-green-dark dark:text-agri-green-light">
+                                {buyerName}
+                              </p>
+                              {/* Stars */}
+                              <div className="flex items-center gap-0.5 mt-0.5">
+                                {[1,2,3,4,5].map(s => (
+                                  <Star key={s} className={`w-3 h-3 ${s <= review.rating ? "fill-agri-wheat text-agri-wheat" : "text-agri-brown/20"}`} />
+                                ))}
+                                <span className="text-[10px] font-bold text-agri-brown ml-1">
+                                  {review.rating}/5
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Order link + date */}
+                            <div className="text-right flex-shrink-0">
+                              {review.matchedOrder && (
+                                <button
+                                  onClick={() => router.push(`/orders/${review.matchedOrder.id}`)}
+                                  className="text-[10px] font-bold text-agri-green hover:underline flex items-center gap-1 justify-end"
+                                >
+                                  Order #{(review.matchedOrder.id || "").slice(-6).toUpperCase()}
+                                  <ArrowRight className="w-2.5 h-2.5" />
+                                </button>
+                              )}
+                              {date && (
+                                <p className="text-[9px] text-agri-brown/50 mt-0.5">{date}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Product from matched order */}
+                          {review.matchedOrder?.productName && (
+                            <div className="flex items-center gap-1.5 text-[10px] text-agri-brown font-semibold">
+                              <ShoppingBag className="w-3 h-3 text-agri-green flex-shrink-0" />
+                              <span className="truncate">{review.matchedOrder.productName} · {review.matchedOrder.quantity} kg</span>
+                            </div>
+                          )}
+
+                          {/* Comment */}
+                          {review.comment ? (
+                            <p className="text-xs text-agri-brown dark:text-gray-300 leading-relaxed bg-agri-green/5 px-3 py-2 rounded-xl border-l-2 border-agri-green/20">
+                              "{review.comment}"
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-agri-brown/40 italic">No written comment left.</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {reviewsWithOrders.length > 5 && (
+                    <p className="text-center text-xs text-agri-brown/60 font-semibold pt-1">
+                      Showing 5 of {reviewsWithOrders.length} reviews
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
         </main>
       </div>
     </div>

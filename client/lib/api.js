@@ -459,6 +459,17 @@ export const apiService = {
     }
   },
 
+  // Get all reviews received by a farmer (farmer sees their own feedback)
+  getFarmerReviews: async (farmerId) => {
+    try {
+      const res = await api.get(`/reviews/${farmerId}`);
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      throw e;
+    }
+  },
+
   // Get public profile (includes trust score)
   getPublicProfile: async (userId) => {
     try {
