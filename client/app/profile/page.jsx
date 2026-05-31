@@ -1,22 +1,110 @@
 "use client";
 
-import React, { useState } from "react";
-import RawImage from '../../components/ui/RawImage'
+import React, { useState, useRef } from "react";
+import RawImage from "../../components/ui/RawImage";
 import { useAuthStore } from "../../store/authStore";
-import { ShieldCheck, Star, Clock, MapPin, User, Settings, Edit3, Save } from "lucide-react";
+import {
+  ShieldCheck,
+  MapPin,
+  Edit3,
+  Save,
+  X,
+  Camera,
+  Mail,
+  Phone,
+  AlertTriangle,
+  CheckCircle2,
+  User,
+  Wallet,
+  Package,
+  Star,
+  Navigation,
+  Clock,
+} from "lucide-react";
 import Header from "../../components/shared/Header";
 import Sidebar from "../../components/shared/Sidebar";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../components/ui/Card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
+import Badge from "../../components/ui/Badge";
 import { apiService } from "../../lib/api";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
+// ─── Profile completion calculator ──────────────────────────────────────────
+function calcCompletion(user) {
+  const fields = [
+    user?.name,
+    user?.email,
+    user?.phone,
+    user?.location,
+    user?.bio,
+    user?.avatar,
+    user?.latitude,
+  ];
+  const filled = fields.filter(Boolean).length;
+  return Math.round((filled / fields.length) * 100);
+}
+
+// ─── Styled toggle checkbox ──────────────────────────────────────────────────
+function VerificationRow({ icon: Icon, label, done, warn }) {
+  return (
+    <div className="flex items-center gap-3 py-3 border-b border-agri-green/5 last:border-none">
+      <div
+        className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+          done
+            ? "bg-agri-green/10 text-agri-green"
+            : warn
+            ? "bg-agri-wheat/10 text-agri-wheat-dark"
+            : "bg-red-500/10 text-red-500"
+        }`}
+      >
+        <Icon className="w-4 h-4" />
+      </div>
+      <span
+        className={`text-xs font-semibold flex-1 ${
+          done
+            ? "text-agri-green-dark dark:text-agri-green-light"
+            : warn
+            ? "text-agri-wheat-dark dark:text-agri-wheat"
+            : "text-red-600 dark:text-red-400"
+        }`}
+      >
+        {label}
+      </span>
+      {done ? (
+        <CheckCircle2 className="w-4 h-4 text-agri-green" />
+      ) : (
+        <AlertTriangle className={`w-4 h-4 ${warn ? "text-agri-wheat-dark" : "text-red-500"}`} />
+      )}
+    </div>
+  );
+}
+
+// ─── Stat pill ───────────────────────────────────────────────────────────────
+function StatPill({ icon: Icon, label, value, color }) {
+  return (
+    <div className={`flex items-center gap-3 p-3.5 rounded-2xl border ${color}`}>
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider opacity-60">{label}</p>
+        <p className="text-sm font-black">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { user, updateProfile } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
-  
-  // Prefill fields
+  const [saving, setSaving] = useState(false);
+
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [location, setLocation] = useState(user?.location || "");
@@ -27,261 +115,474 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
-  const handleSave = (e) => {
+  const completion = calcCompletion(user);
+
+  const handleSave = async (e) => {
     e.preventDefault();
-    apiService.updateProfile({ name, phone, location, bio, avatar, latitude, longitude })
-      .then((response) => {
-        const updatedUser = response?.data;
-        if (updatedUser) {
-          updateProfile(updatedUser);
-          setName(updatedUser.name || "");
-          setPhone(updatedUser.phone || "");
-          setLocation(updatedUser.location || "");
-          setLatitude(updatedUser.latitude ?? "");
-          setLongitude(updatedUser.longitude ?? "");
-          setBio(updatedUser.bio || "");
-          setAvatar(updatedUser.avatar || "");
-        }
-        setIsEditing(false);
-        toast.success("Profile updated successfully!");
-      })
-      .catch((error) => {
-        toast.error(error?.response?.data?.message || "Failed to update profile.");
+    setSaving(true);
+    try {
+      const response = await apiService.updateProfile({
+        name, phone, location, bio, avatar, latitude, longitude,
       });
+      const updatedUser = response?.data;
+      if (updatedUser) {
+        updateProfile(updatedUser);
+        setName(updatedUser.name || "");
+        setPhone(updatedUser.phone || "");
+        setLocation(updatedUser.location || "");
+        setLatitude(updatedUser.latitude ?? "");
+        setLongitude(updatedUser.longitude ?? "");
+        setBio(updatedUser.bio || "");
+        setAvatar(updatedUser.avatar || "");
+      }
+      setIsEditing(false);
+      toast.success("Profile updated successfully!");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update profile.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleUseCurrentLocation = () => {
     if (!navigator?.geolocation) {
-      toast.error('Geolocation not available in this browser')
-      return
+      toast.error("Geolocation not available in this browser");
+      return;
     }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        setLatitude(lat);
+        setLongitude(lon);
+        try {
+          const url = new URL("https://geocoding-api.open-meteo.com/v1/reverse");
+          url.searchParams.set("latitude", String(lat));
+          url.searchParams.set("longitude", String(lon));
+          url.searchParams.set("language", "en");
+          url.searchParams.set("format", "json");
+          const res = await fetch(url);
+          if (res.ok) {
+            const d = await res.json();
+            const label = [d?.name, d?.admin1, d?.country]
+              .filter(Boolean)
+              .join(", ");
+            if (label) setLocation(label);
+          }
+        } catch {}
+        toast.success("Location detected and saved!");
+      },
+      () => toast.error("Unable to detect location"),
+      { timeout: 10000 }
+    );
+  };
 
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const lat = pos.coords.latitude
-      const lon = pos.coords.longitude
-      setLatitude(lat)
-      setLongitude(lon)
+  // Verification checks
+  const verifications = [
+    { icon: Mail,       label: "Email verified",                   done: !!user.email,    warn: false },
+    { icon: Phone,      label: user.phone ? "Phone number added" : "Phone number missing — add in edit", done: !!user.phone, warn: !user.phone },
+    { icon: MapPin,     label: user.location ? `Location: ${user.location}` : "GPS not set — edit profile to save location", done: !!user.location, warn: !user.location },
+    { icon: Wallet,     label: `Wallet Balance: ₹${user.walletBalance ?? 0}`, done: true, warn: false },
+  ];
 
-      // Reverse-geocode to a friendly label
-      try {
-        const url = new URL('https://geocoding-api.open-meteo.com/v1/reverse')
-        url.searchParams.set('latitude', String(lat))
-        url.searchParams.set('longitude', String(lon))
-        url.searchParams.set('language', 'en')
-        url.searchParams.set('format', 'json')
-
-        const res = await fetch(url)
-        if (res.ok) {
-          const d = await res.json()
-          const name = d?.name
-          const admin = d?.admin1
-          const country = d?.country
-          const label = [name, admin, country].filter(Boolean).join(', ')
-          if (label) setLocation(label)
-        }
-      } catch (err) {
-        // ignore reverse geocode failures
-      }
-
-      toast.success('Using your current location')
-    }, (err) => {
-      toast.error('Unable to determine location')
-    }, { timeout: 10000 })
-  }
+  const avatarSrc =
+    avatar ||
+    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80";
 
   return (
-    <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col text-current transition-colors">
+    <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col transition-colors">
       <Header />
 
       <div className="flex flex-1 max-w-7xl w-full mx-auto">
         <Sidebar />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-8 overflow-y-auto">
-          {/* Header */}
+
+          {/* ── Page header ─────────────────────────────────────────────── */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-black text-agri-green-dark dark:text-agri-green-light tracking-tight">
                 Profile Portfolio
               </h1>
               <p className="text-xs sm:text-sm text-agri-brown mt-1">
-                Manage your credentials, bio, and platform trust score indicators.
+                Manage your credentials, bio, and platform trust indicators.
               </p>
             </div>
-            
             <Button
-              variant="secondary"
+              variant={isEditing ? "secondary" : "secondary"}
               onClick={() => setIsEditing(!isEditing)}
-              className="flex items-center gap-1 py-2 px-4 rounded-xl text-xs font-bold border-agri-green/20"
+              className="flex items-center gap-1.5 py-2 px-4 rounded-xl text-xs font-bold border-agri-green/20 self-start sm:self-auto"
             >
-              {isEditing ? <Save className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
-              <span>{isEditing ? "Cancel Edit" : "Edit Profile"}</span>
+              {isEditing ? (
+                <><X className="w-4 h-4" /> Cancel</>
+              ) : (
+                <><Edit3 className="w-4 h-4" /> Edit Profile</>
+              )}
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left: General Profile Info Card */}
+          {/* ── Profile completion banner ────────────────────────────────── */}
+          {completion < 100 && !isEditing && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-4 p-4 rounded-2xl bg-agri-wheat/10 border border-agri-wheat/20"
+            >
+              <div className="flex-1 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="text-agri-wheat-dark dark:text-agri-wheat">
+                    Profile {completion}% complete
+                  </span>
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="text-agri-green dark:text-agri-green-light hover:underline"
+                  >
+                    Complete now →
+                  </button>
+                </div>
+                <div className="h-1.5 w-full bg-agri-wheat/20 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${completion}%` }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className="h-full bg-agri-wheat rounded-full"
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            {/* ── LEFT ─────────────────────────────────────────────────── */}
             <div className="lg:col-span-7 space-y-6">
-              {!isEditing ? (
-                <Card className="border-agri-green/5 p-6 sm:p-8 space-y-6">
-                  {/* Photo & Name */}
-                  <div className="flex items-center gap-5">
-                    <RawImage
-                      src={avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'}
-                      alt={user.name || 'Profile image'}
-                      width={96}
-                      height={96}
-                      className="w-24 h-24 object-cover rounded-3xl border border-agri-green/10"
-                    />
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black uppercase bg-agri-green/10 text-agri-green px-2 py-0.5 rounded-full">
-                        {user.role} Partner
-                      </span>
-                      <h2 className="text-2xl font-black text-agri-green-dark dark:text-agri-green-light">
-                        {user.name}
-                      </h2>
-                      <p className="text-xs text-agri-brown font-bold flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-agri-green" /> {user.location}
-                      </p>
-                    </div>
-                  </div>
+              <AnimatePresence mode="wait">
 
-                  <div className="h-px bg-agri-green/5" />
+                {/* VIEW MODE */}
+                {!isEditing && (
+                  <motion.div
+                    key="view"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <Card className="border-agri-green/5 overflow-hidden">
+                      {/* Cover strip */}
+                      <div className="h-20 bg-gradient-to-r from-agri-green-dark via-agri-green to-agri-green-light relative">
+                        <div className="absolute inset-0 opacity-20 bg-[url('/grid.svg')]" />
+                      </div>
 
-                  {/* Bio */}
-                  <div className="space-y-2">
-                    <h3 className="text-xs font-black uppercase text-agri-green">Bio & Overview</h3>
-                    <p className="text-xs sm:text-sm text-agri-brown dark:text-gray-300 leading-relaxed bg-white/40 dark:bg-black/20 p-4 rounded-2xl border border-agri-green/5">
-                      {user.bio || "No biography details added. Click Edit Profile to compile your business credentials."}
-                    </p>
-                  </div>
+                      <div className="px-6 pb-6 space-y-6">
+                        {/* Avatar row — overlaps the cover */}
+                        <div className="flex items-end justify-between -mt-10 mb-2">
+                          <div className="relative">
+                            <img
+                              src={avatarSrc}
+                              alt={user.name}
+                              className="w-20 h-20 rounded-3xl object-cover border-4 border-white dark:border-zinc-900 shadow-lg"
+                            />
+                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-agri-green rounded-full border-2 border-white dark:border-zinc-900 flex items-center justify-center">
+                              <CheckCircle2 className="w-3 h-3 text-white" />
+                            </div>
+                          </div>
+                          <Badge variant="green" size="sm">{user.role} Partner</Badge>
+                        </div>
 
-                  <div className="h-px bg-agri-green/5" />
+                        {/* Name + location */}
+                        <div className="space-y-1">
+                          <h2 className="text-2xl font-black text-agri-green-dark dark:text-agri-green-light">
+                            {user.name}
+                          </h2>
+                          <p className="text-xs text-agri-brown font-semibold flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-agri-green" />
+                            {user.location || (
+                              <span className="text-agri-wheat-dark italic">
+                                Location not set —{" "}
+                                <button
+                                  onClick={() => setIsEditing(true)}
+                                  className="underline"
+                                >
+                                  add now
+                                </button>
+                              </span>
+                            )}
+                          </p>
+                        </div>
 
-                  {/* Contact details */}
-                  <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-agri-brown">
-                    <div className="p-3 bg-white/50 dark:bg-black/20 border border-agri-green/5 rounded-xl">
-                      <p className="text-[9px] uppercase font-bold text-agri-brown-light">Email Address</p>
-                      <p className="mt-1">{user.email}</p>
-                    </div>
-                    <div className="p-3 bg-white/50 dark:bg-black/20 border border-agri-green/5 rounded-xl">
-                      <p className="text-[9px] uppercase font-bold text-agri-brown-light">Contact Phone</p>
-                      <p className="mt-1">{user.phone}</p>
-                    </div>
-                  </div>
-                </Card>
-              ) : (
-                <form onSubmit={handleSave}>
-                  <Card className="border-agri-green/5 p-6 sm:p-8 space-y-4">
-                    <Input
-                      label="Full Name / business Name"
-                      id="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                    />
-                    <div className="grid grid-cols-2 gap-4">
-                      <Input
-                        label="Phone Number"
-                        id="phone"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        required
-                      />
-                      <div>
-                        <Input
-                          label="Location (City, State)"
-                          id="location"
-                          value={location}
-                          onChange={(e) => setLocation(e.target.value)}
-                          required
-                        />
-                        <div className="mt-2 flex items-center gap-2">
-                          <Button type="button" variant="ghost" onClick={handleUseCurrentLocation} className="text-xs">
-                            Use my current location
-                          </Button>
-                          <span className="text-[10px] text-agri-brown">{latitude ? `Lat: ${latitude.toFixed ? latitude.toFixed(4) : latitude}` : ''} {longitude ? `Lon: ${longitude.toFixed ? longitude.toFixed(4) : longitude}` : ''}</span>
+                        {/* Stat pills */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          <StatPill
+                            icon={Package}
+                            label="Total Orders"
+                            value={user.totalOrders ?? "—"}
+                            color="border-agri-green/10 text-agri-green bg-agri-green/5"
+                          />
+                          <StatPill
+                            icon={Wallet}
+                            label="Wallet"
+                            value={`₹${user.walletBalance ?? 0}`}
+                            color="border-agri-wheat/15 text-agri-wheat-dark bg-agri-wheat/5"
+                          />
+                          <StatPill
+                            icon={Star}
+                            label="Trust Score"
+                            value={`${user.trustScore ?? "—"}%`}
+                            color="border-agri-brown/10 text-agri-brown bg-agri-brown/5"
+                          />
+                        </div>
+
+                        <div className="h-px bg-agri-green/5" />
+
+                        {/* Bio */}
+                        <div className="space-y-2">
+                          <h3 className="text-[10px] font-black uppercase tracking-widest text-agri-green">
+                            Bio & Overview
+                          </h3>
+                          <p className="text-xs sm:text-sm text-agri-brown dark:text-gray-300 leading-relaxed bg-white/40 dark:bg-black/20 p-4 rounded-2xl border border-agri-green/5 min-h-[60px]">
+                            {user.bio || (
+                              <span className="italic text-agri-brown/60">
+                                No biography added.{" "}
+                                <button
+                                  onClick={() => setIsEditing(true)}
+                                  className="text-agri-green hover:underline not-italic"
+                                >
+                                  Click Edit Profile to add your details.
+                                </button>
+                              </span>
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="h-px bg-agri-green/5" />
+
+                        {/* Contact info */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="flex items-center gap-3 p-3.5 bg-white/50 dark:bg-black/20 border border-agri-green/5 rounded-xl">
+                            <Mail className="w-4 h-4 text-agri-green flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[9px] uppercase font-bold text-agri-brown/60 tracking-wider">Email Address</p>
+                              <p className="text-xs font-semibold text-agri-green-dark dark:text-gray-200 truncate">{user.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 p-3.5 bg-white/50 dark:bg-black/20 border border-agri-green/5 rounded-xl">
+                            <Phone className="w-4 h-4 text-agri-green flex-shrink-0" />
+                            <div>
+                              <p className="text-[9px] uppercase font-bold text-agri-brown/60 tracking-wider">Contact Phone</p>
+                              <p className="text-xs font-semibold text-agri-green-dark dark:text-gray-200">
+                                {user.phone || <span className="italic text-agri-brown/50">—</span>}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <Input
-                      label="Avatar Image URL"
-                      id="avatar"
-                      value={avatar}
-                      onChange={(e) => setAvatar(e.target.value)}
-                    />
-                    <div className="flex flex-col gap-1.5">
-                      <label htmlFor="bio" className="text-xs font-semibold text-agri-green-dark">
-                        Biography / Farmer description
-                      </label>
-                      <textarea
-                        id="bio"
-                        rows="4"
-                        value={bio}
-                        onChange={(e) => setBio(e.target.value)}
-                        className="w-full px-4 py-3 rounded-2xl border text-sm bg-white/60 dark:bg-black/30 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20"
-                      />
-                    </div>
-                    
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      className="w-full py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1.5"
-                    >
-                      <Save className="w-4.5 h-4.5" />
-                      <span>Confirm profile Updates</span>
-                    </Button>
-                  </Card>
-                </form>
-              )}
+                    </Card>
+                  </motion.div>
+                )}
+
+                {/* EDIT MODE */}
+                {isEditing && (
+                  <motion.div
+                    key="edit"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <form onSubmit={handleSave}>
+                      <Card className="border-agri-green/5 p-6 space-y-5">
+                        <h3 className="text-sm font-black text-agri-green-dark dark:text-agri-green-light">
+                          Edit Profile Details
+                        </h3>
+
+                        {/* Avatar preview + URL */}
+                        <div className="flex items-center gap-4 p-4 bg-agri-green/5 rounded-2xl border border-agri-green/10">
+                          <div className="relative">
+                            <img
+                              src={avatar || avatarSrc}
+                              alt="Preview"
+                              className="w-16 h-16 rounded-2xl object-cover border-2 border-agri-green/20"
+                            />
+                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-agri-green rounded-full flex items-center justify-center">
+                              <Camera className="w-2.5 h-2.5 text-white" />
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <Input
+                              label="Avatar Image URL"
+                              id="avatar"
+                              value={avatar}
+                              onChange={(e) => setAvatar(e.target.value)}
+                              placeholder="https://..."
+                            />
+                          </div>
+                        </div>
+
+                        <Input
+                          label="Full Name / Business Name"
+                          id="name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          required
+                        />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <Input
+                            label="Phone Number"
+                            id="phone"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                          />
+                          <div className="space-y-1">
+                            <Input
+                              label="Location (City, State)"
+                              id="location"
+                              value={location}
+                              onChange={(e) => setLocation(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleUseCurrentLocation}
+                              className="flex items-center gap-1.5 text-[10px] font-bold text-agri-green hover:text-agri-green-dark transition"
+                            >
+                              <Navigation className="w-3 h-3" />
+                              Detect my current location
+                            </button>
+                            {latitude && (
+                              <p className="text-[10px] text-agri-brown/60">
+                                GPS: {Number(latitude).toFixed(4)}, {Number(longitude).toFixed(4)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                          <label
+                            htmlFor="bio"
+                            className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light"
+                          >
+                            Biography / Business Description
+                          </label>
+                          <textarea
+                            id="bio"
+                            rows={4}
+                            value={bio}
+                            onChange={(e) => setBio(e.target.value)}
+                            placeholder="Tell buyers about yourself, your business, and what you source..."
+                            className="w-full px-4 py-3 rounded-2xl border text-sm bg-white/60 dark:bg-black/30 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20 resize-none text-agri-green-dark dark:text-gray-200 placeholder:text-agri-brown/40"
+                          />
+                        </div>
+
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          className="w-full py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-md shadow-agri-green/20"
+                          disabled={saving}
+                        >
+                          {saving ? (
+                            <>
+                              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                              </svg>
+                              Saving…
+                            </>
+                          ) : (
+                            <><Save className="w-4 h-4" /> Save Changes</>
+                          )}
+                        </Button>
+                      </Card>
+                    </form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Right: Trust Index and Rating Cards */}
-            <div className="lg:col-span-5 space-y-6">
-              {/* Trust Index Card */}
-              {user.role === "FARMER" && (
-                <Card className="border-agri-green/5 bg-gradient-to-br from-white/70 to-agri-green/5 dark:from-[#121F16]/50 dark:to-agri-green/5 p-6 space-y-6">
-                  <div className="flex items-center justify-between border-b border-agri-green/5 pb-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">Farmer Trust Index</h3>
-                      <p className="text-[10px] text-agri-brown mt-0.5">Aggregated trust score metrics</p>
-                    </div>
-                    <ShieldCheck className="w-10 h-10 text-agri-green animate-pulse-slow" />
-                  </div>
+            {/* ── RIGHT ────────────────────────────────────────────────── */}
+            <div className="lg:col-span-5 space-y-5">
 
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <p className="text-4xl font-black text-agri-green">94%</p>
-                      <p className="text-[9px] text-agri-brown font-bold uppercase mt-1">Overall Trust Score</p>
-                    </div>
-                    <div className="text-right text-[10px] text-agri-brown font-semibold space-y-1">
-                      <div>Ratings (40%): <span className="font-extrabold text-agri-green">4.8 / 5.0</span></div>
-                      <div>Fulfillment (40%): <span className="font-extrabold text-agri-green">97.4%</span></div>
-                      <div>Response Speed (20%): <span className="font-extrabold text-agri-green">&lt; 4 hours</span></div>
-                    </div>
+              {/* Verification status card */}
+              <Card className="border-agri-green/5 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">
+                      Verification Status
+                    </h3>
+                    <p className="text-[10px] text-agri-brown mt-0.5">
+                      Complete all checks to boost your trust score
+                    </p>
                   </div>
+                  <ShieldCheck className="w-8 h-8 text-agri-green opacity-60" />
+                </div>
+                <div>
+                  {verifications.map((v, i) => (
+                    <VerificationRow key={i} {...v} />
+                  ))}
+                </div>
+              </Card>
+
+              {/* Account created */}
+              <Card className="border-agri-green/5 p-5 space-y-3">
+                <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">
+                  Account Info
+                </h3>
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex items-center justify-between py-2 border-b border-agri-green/5">
+                    <span className="text-agri-brown font-semibold flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5" /> Role
+                    </span>
+                    <Badge variant="green" size="sm">{user.role}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b border-agri-green/5">
+                    <span className="text-agri-brown font-semibold flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" /> Member since
+                    </span>
+                    <span className="font-bold text-agri-green-dark dark:text-gray-200">
+                      {user.createdAt
+                        ? new Date(user.createdAt).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-agri-brown font-semibold flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" /> Location
+                    </span>
+                    <span className="font-bold text-agri-green-dark dark:text-gray-200 max-w-[140px] truncate text-right">
+                      {user.location || <span className="italic text-agri-brown/50">Not set</span>}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Farmer trust index — farmers only */}
+              {user.role === "FARMER" && (
+                <Card className="border-agri-green/5 p-5 bg-gradient-to-br from-agri-green/5 to-transparent space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">
+                        Farmer Trust Index
+                      </h3>
+                      <p className="text-[10px] text-agri-brown mt-0.5">Aggregated score metrics</p>
+                    </div>
+                    <p className="text-3xl font-black text-agri-green">{user.trustScore ?? 94}%</p>
+                  </div>
+                  {[
+                    { label: "Ratings (40%)", value: "4.8 / 5.0" },
+                    { label: "Fulfillment (40%)", value: "97.4%" },
+                    { label: "Response speed (20%)", value: "< 4 hrs" },
+                  ].map(({ label, value }) => (
+                    <div
+                      key={label}
+                      className="flex items-center justify-between text-xs border-b border-agri-green/5 pb-2 last:border-none last:pb-0"
+                    >
+                      <span className="text-agri-brown font-semibold">{label}</span>
+                      <span className="font-extrabold text-agri-green">{value}</span>
+                    </div>
+                  ))}
                 </Card>
               )}
-
-              {/* Review summary Board */}
-              <Card className="border-agri-green/5 p-6 space-y-4">
-                <CardHeader className="p-0 border-none">
-                  <CardTitle className="text-sm font-bold text-agri-green">Verification Status</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 text-xs text-agri-brown space-y-3 font-semibold">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-agri-green" />
-                    <span>Identity Card Verified</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-agri-green" />
-                    <span>Bank account Connected</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-agri-green" />
-                    <span>Location Coordinates Locked</span>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </div>
         </main>

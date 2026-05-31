@@ -7,7 +7,7 @@ const COOKIE_OPTIONS = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    maxAge: 7 * 24 * 60 * 60 * 1000   // 7 days
 }
 
 const register = asyncHandler(async (req, res) => {
@@ -27,11 +27,14 @@ const register = asyncHandler(async (req, res) => {
 
     const user = await registerUser({ name, email, password, role, phone, location })
 
-    // Generate tokens for immediate login
     const { accessToken, refreshToken } = generateTokens(user._id.toString())
 
+    // ✅ FIX: Set refresh cookie on register, same as login
+    // Without this, the 15-min access token expires and the user gets silently logged out
+    res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS)
+
     res.status(201).json(
-        new ApiResponse(201, { user: user.toJSON(), accessToken, refreshToken }, 'Account created successfully')
+        new ApiResponse(201, { user: user.toJSON(), accessToken }, 'Account created successfully')
     )
 })
 
@@ -65,7 +68,6 @@ const refresh = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
     res.clearCookie('refreshToken', COOKIE_OPTIONS)
-
     res.json(
         new ApiResponse(200, null, 'Logged out successfully')
     )

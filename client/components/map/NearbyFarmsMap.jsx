@@ -3,136 +3,157 @@
 import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 
-// MarkerCluster runtime loader URLs
-const MARKER_CLUSTER_CSS = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css";
-const MARKER_CLUSTER_DEFAULT_CSS = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css";
-const MARKER_CLUSTER_JS = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js";
+// ── Tile options ─────────────────────────────────────────────────────────────
+// CartoDB Positron — clean, Google Maps-like, no API key needed
+const TILE_URL   = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const TILE_ATTR  = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>';
 
+// OSRM public routing (free, no key)
+const OSRM_URL = "https://router.project-osrm.org/route/v1/driving";
+
+// MarkerCluster CDN
+const MC_CSS  = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css";
+const MC_CSS2 = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css";
+const MC_JS   = "https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js";
+
+const DEFAULT_CENTER = [20.5937, 78.9629]; // Centre of India
+
+// ── helpers ──────────────────────────────────────────────────────────────────
 async function loadMarkerCluster() {
-  if (typeof window === 'undefined') return;
-  if (window._leafletMarkerClusterLoaded) return;
-
-  // inject CSS
+  if (typeof window === "undefined" || window._mcLoaded) return;
   const ensureLink = (href) => {
-    if (!document.querySelector(`link[href='${href}']`)) {
-      const l = document.createElement('link');
-      l.rel = 'stylesheet';
-      l.href = href;
+    if (!document.querySelector(`link[href="${href}"]`)) {
+      const l = document.createElement("link");
+      l.rel = "stylesheet"; l.href = href;
       document.head.appendChild(l);
     }
   };
-
-  ensureLink(MARKER_CLUSTER_CSS);
-  ensureLink(MARKER_CLUSTER_DEFAULT_CSS);
-
-  // inject script and await load
-  if (!document.querySelector(`script[src='${MARKER_CLUSTER_JS}']`)) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = MARKER_CLUSTER_JS;
-      s.async = true;
-      s.onload = () => { window._leafletMarkerClusterLoaded = true; resolve(); };
-      s.onerror = (e) => reject(e);
+  ensureLink(MC_CSS); ensureLink(MC_CSS2);
+  if (!document.querySelector(`script[src="${MC_JS}"]`)) {
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = MC_JS; s.async = true;
+      s.onload = () => { window._mcLoaded = true; res(); };
+      s.onerror = rej;
       document.body.appendChild(s);
     });
-  } else {
-    window._leafletMarkerClusterLoaded = true;
-  }
+  } else { window._mcLoaded = true; }
 }
-
-const DEFAULT_CENTER = [19.9975, 73.7898];
 
 async function geocodeLocation(location) {
-  const geocodeUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  geocodeUrl.searchParams.set("name", location);
-  geocodeUrl.searchParams.set("count", "1");
-  geocodeUrl.searchParams.set("language", "en");
-  geocodeUrl.searchParams.set("format", "json");
-  geocodeUrl.searchParams.set("country", "IN");
-
-  const response = await fetch(geocodeUrl, { cache: "no-store" });
-  if (!response.ok) return null;
-
-  const data = await response.json();
-  const result = data?.results?.[0];
-  if (!result) return null;
-
-  return {
-    coords: [result.latitude, result.longitude],
-    label: [result.name, result.admin1, result.country].filter(Boolean).join(", "),
-  };
+  try {
+    const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+    url.searchParams.set("name", location);
+    url.searchParams.set("count", "1");
+    url.searchParams.set("language", "en");
+    url.searchParams.set("format", "json");
+    url.searchParams.set("country", "IN");
+    const data = await fetch(url).then(r => r.json());
+    const r = data?.results?.[0];
+    if (!r) return null;
+    return { coords: [r.latitude, r.longitude], label: [r.name, r.admin1].filter(Boolean).join(", ") };
+  } catch { return null; }
 }
 
-export default function NearbyFarmsMap({ farms = [], location = "", fallbackLabel = "Your location", centerCoords = null }) {
-  const mapContainerRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const userMarkerRef = useRef(null);
-  const farmsLayerRef = useRef(null);
-  const clusterGroupRef = useRef(null);
-  const [center, setCenter] = useState(DEFAULT_CENTER);
-  const [centerLabel, setCenterLabel] = useState(fallbackLabel);
+async function fetchRoute(from, to) {
+  // from / to are [lat, lng] — OSRM wants lng,lat
+  try {
+    const url = `${OSRM_URL}/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+    const data = await fetch(url).then(r => r.json());
+    if (data.code !== "Ok") return null;
+    const route = data.routes[0];
+    return {
+      geojson: route.geometry,
+      distanceKm: (route.distance / 1000).toFixed(1),
+      durationMin: Math.round(route.duration / 60),
+    };
+  } catch { return null; }
+}
 
+// Custom SVG marker factories
+const userPin = (label) => L.divIcon({
+  className: "",
+  html: `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div style="
+        background:#2E7D32;color:#fff;font-size:10px;font-weight:800;
+        padding:4px 8px;border-radius:99px;white-space:nowrap;
+        box-shadow:0 2px 8px rgba(46,125,50,.35);
+        max-width:120px;overflow:hidden;text-overflow:ellipsis;
+      ">${label}</div>
+      <svg width="20" height="24" viewBox="0 0 20 24" fill="none">
+        <path d="M10 0C4.48 0 0 4.48 0 10c0 7.5 10 14 10 14s10-6.5 10-14c0-5.52-4.48-10-10-10z" fill="#2E7D32"/>
+        <circle cx="10" cy="10" r="4" fill="white"/>
+      </svg>
+    </div>`,
+  iconSize: [120, 48],
+  iconAnchor: [60, 48],
+});
+
+const farmPin = (trustScore) => {
+  const color = trustScore >= 70 ? "#1B5E20" : trustScore >= 40 ? "#F57F17" : "#B71C1C";
+  return L.divIcon({
+    className: "",
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:1px">
+        <svg width="16" height="20" viewBox="0 0 16 20" fill="none">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 6 8 12 8 12s8-6 8-12c0-4.42-3.58-8-8-8z" fill="${color}"/>
+          <circle cx="8" cy="8" r="3" fill="white"/>
+        </svg>
+      </div>`,
+    iconSize: [16, 20],
+    iconAnchor: [8, 20],
+  });
+};
+
+// ── component ─────────────────────────────────────────────────────────────────
+export default function NearbyFarmsMap({
+  farms = [],
+  location = "",
+  fallbackLabel = "Your location",
+  centerCoords = null,
+  // optional: pass farmer + buyer coords to draw a delivery route
+  routeFrom = null, // [lat, lng]
+  routeTo = null,   // [lat, lng]
+}) {
+  const containerRef  = useRef(null);
+  const mapRef        = useRef(null);
+  const userMarkerRef = useRef(null);
+  const routeLayerRef = useRef(null);
+  const clusterRef    = useRef(null);
+  const farmsLayerRef = useRef(null);
+
+  const [center, setCenter]     = useState(DEFAULT_CENTER);
+  const [centerLabel, setLabel] = useState(fallbackLabel);
+  const [routeInfo, setRouteInfo] = useState(null); // { distanceKm, durationMin }
+  const [isRouting, setIsRouting] = useState(false);
+
+  // ── resolve center coords ────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-
-    if (typeof window === "undefined" || !mapContainerRef.current) return;
-
-    const resolveCenter = async () => {
-      // Priority: explicit centerCoords prop -> saved textual location -> browser geolocation -> default
-      if (centerCoords && Array.isArray(centerCoords) && centerCoords.length === 2) {
-        setCenter(centerCoords);
-        setCenterLabel(fallbackLabel);
-        return;
+    (async () => {
+      if (centerCoords?.length === 2) {
+        setCenter(centerCoords); setLabel(fallbackLabel); return;
       }
-
       if (location) {
-        const resolved = await geocodeLocation(location);
-        if (!cancelled && resolved?.coords) {
-          setCenter(resolved.coords);
-          setCenterLabel(resolved.label || location);
-          return;
-        }
+        const r = await geocodeLocation(location);
+        if (!cancelled && r) { setCenter(r.coords); setLabel(r.label); return; }
       }
-
       if (navigator?.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          (position) => {
-            if (!cancelled) {
-              setCenter([position.coords.latitude, position.coords.longitude]);
-              setCenterLabel("Your current location");
-            }
-          },
-          () => {
-            if (!cancelled) {
-              setCenter(DEFAULT_CENTER);
-              setCenterLabel(fallbackLabel);
-            }
-          },
+          (p) => { if (!cancelled) { setCenter([p.coords.latitude, p.coords.longitude]); setLabel("Your location"); } },
+          () => { if (!cancelled) { setCenter(DEFAULT_CENTER); setLabel(fallbackLabel); } },
           { timeout: 5000 }
         );
-        return;
       }
+    })();
+    return () => { cancelled = true; };
+  }, [location, centerCoords, fallbackLabel]);
 
-      if (!cancelled) {
-        setCenter(DEFAULT_CENTER);
-        setCenterLabel(fallbackLabel);
-      }
-    };
-
-    resolveCenter();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fallbackLabel, location, centerCoords]);
-
+  // ── initialise map once ──────────────────────────────────────────────────
   useEffect(() => {
-    if (typeof window === "undefined" || !mapContainerRef.current) return;
+    if (typeof window === "undefined" || !containerRef.current || mapRef.current) return;
 
-    // Check if map already initialized to avoid re-creation errors
-    if (mapInstanceRef.current) return;
-
-    // Fixed default icon issue in Leaflet on window load
     delete L.Icon.Default.prototype._getIconUrl;
     L.Icon.Default.mergeOptions({
       iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
@@ -140,136 +161,181 @@ export default function NearbyFarmsMap({ farms = [], location = "", fallbackLabe
       shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
     });
 
-    // Initialize map
-    const map = L.map(mapContainerRef.current).setView(DEFAULT_CENTER, 9);
-    mapInstanceRef.current = map;
+    const map = L.map(containerRef.current, {
+      zoomControl: false,  // we add a custom positioned one below
+    }).setView(DEFAULT_CENTER, 6);
+    mapRef.current = map;
 
-    // OpenStreetMap tile layer
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    // ── Voyager tiles (looks like Google Maps) ───────────────────────────
+    L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map);
+
+    // ── Controls ─────────────────────────────────────────────────────────
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+    L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
 
     farmsLayerRef.current = L.layerGroup().addTo(map);
+    routeLayerRef.current = L.layerGroup().addTo(map);
 
-    // attempt to load markercluster plugin at runtime
+    // user marker
+    userMarkerRef.current = L.marker(DEFAULT_CENTER, { icon: userPin(fallbackLabel) }).addTo(map);
+
+    // load marker cluster
     loadMarkerCluster().then(() => {
       try {
-        if (window.L && typeof window.L.markerClusterGroup === 'function') {
-          clusterGroupRef.current = L.markerClusterGroup();
-          map.addLayer(clusterGroupRef.current);
+        if (window.L?.markerClusterGroup) {
+          clusterRef.current = L.markerClusterGroup({ maxClusterRadius: 60 });
+          map.addLayer(clusterRef.current);
+        } else {
+          clusterRef.current = farmsLayerRef.current;
         }
-      } catch (err) {
-        // fallback to simple layerGroup
-        clusterGroupRef.current = farmsLayerRef.current;
-      }
-    }).catch(() => {
-      clusterGroupRef.current = farmsLayerRef.current;
-    });
-
-    userMarkerRef.current = L.marker(DEFAULT_CENTER)
-      .addTo(map)
-      .bindPopup(`<strong>${fallbackLabel}</strong>`);
+      } catch { clusterRef.current = farmsLayerRef.current; }
+    }).catch(() => { clusterRef.current = farmsLayerRef.current; });
 
     return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-        userMarkerRef.current = null;
-        farmsLayerRef.current = null;
-      }
+      map.remove();
+      mapRef.current = null;
+      userMarkerRef.current = null;
     };
   }, [fallbackLabel]);
 
+  // ── update user marker when center changes ───────────────────────────────
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
-
-    mapInstanceRef.current.setView(center, 9);
-
-    if (userMarkerRef.current) {
-      userMarkerRef.current.setLatLng(center).setPopupContent(`<strong>${centerLabel}</strong>`);
-    }
+    if (!mapRef.current) return;
+    mapRef.current.setView(center, 9, { animate: true });
+    userMarkerRef.current?.setLatLng(center).setIcon(userPin(centerLabel));
   }, [center, centerLabel]);
 
+  // ── render farm markers ──────────────────────────────────────────────────
   useEffect(() => {
     if (!farmsLayerRef.current) return;
-    const targetLayer = clusterGroupRef.current || farmsLayerRef.current;
-    if (!targetLayer) return;
-    if (typeof targetLayer.clearLayers === 'function') targetLayer.clearLayers();
+    const layer = clusterRef.current || farmsLayerRef.current;
+    if (typeof layer.clearLayers === "function") layer.clearLayers();
 
     farms.forEach((farm) => {
       if (!Array.isArray(farm.coords) || farm.coords.length < 2) return;
 
-      const popupContent = `
-        <div style="font-family: var(--font-family-sans); font-size: 11px; padding: 4px; min-width: 150px;">
-          <h5 style="margin: 0; font-weight: 800; color: #1B5E20; font-size:12px;">${farm.name}</h5>
-          <p style="margin: 3px 0; font-weight: 600;">Grower: ${farm.farmer}</p>
-          <p style="margin: 3px 0; font-weight: 500; color: #8D6E63;">Crops: ${farm.crops}</p>
-          <div style="margin-top: 6px; display: inline-block; background: rgba(46, 125, 50, 0.1); color: #2E7D32; font-weight: 700; padding: 2px 6px; border-radius: 99px; font-size: 9px;">
-            Trust Score: ${farm.trustScore}%
+      const score = farm.trustScore ?? 20;
+      const scoreColor = score >= 70 ? "#1B5E20" : score >= 40 ? "#F57F17" : "#B71C1C";
+
+      const popup = `
+        <div style="font-family:sans-serif;font-size:12px;min-width:160px;padding:4px 0">
+          <div style="font-weight:800;color:#1B5E20;font-size:13px;margin-bottom:4px">${farm.name}</div>
+          <div style="color:#5D4037;margin-bottom:2px">👨‍🌾 ${farm.farmer}</div>
+          <div style="color:#5D4037;margin-bottom:6px">🌾 ${farm.crops}</div>
+          <div style="display:inline-flex;align-items:center;gap:4px;background:${scoreColor}18;
+               color:${scoreColor};font-weight:700;padding:3px 8px;border-radius:99px;font-size:10px">
+            ⭐ ${score}% Trust
           </div>
-        </div>
-      `;
+        </div>`;
 
-      // custom simple icon as a colored dot using DivIcon
-      const farmIcon = L.divIcon({
-        className: '',
-        html: `<div style="width:18px;height:18px;border-radius:50%;background:#2E7D32;border:3px solid white;box-shadow:0 0 0 2px rgba(46,125,50,0.12)"></div>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9]
-      });
-
-      const marker = L.marker(farm.coords, { icon: farmIcon }).bindPopup(popupContent);
-      if (typeof targetLayer.addLayer === 'function') targetLayer.addLayer(marker);
-      else if (typeof targetLayer.addTo === 'function') marker.addTo(targetLayer);
+      L.marker(farm.coords, { icon: farmPin(score) })
+        .bindPopup(popup, { maxWidth: 200 })
+        .addTo(layer);
     });
   }, [farms]);
 
-  // compute distance (km) between two [lat, lon] points
+  // ── draw route when routeFrom/routeTo supplied ───────────────────────────
+  useEffect(() => {
+    if (!routeLayerRef.current) return;
+    routeLayerRef.current.clearLayers();
+    setRouteInfo(null);
+    if (!routeFrom || !routeTo) return;
+
+    setIsRouting(true);
+    fetchRoute(routeFrom, routeTo).then((result) => {
+      setIsRouting(false);
+      if (!result || !mapRef.current) return;
+
+      const routeLine = L.geoJSON(result.geojson, {
+        style: {
+          color: "#2E7D32",
+          weight: 4,
+          opacity: 0.85,
+          dashArray: null,
+        },
+      }).addTo(routeLayerRef.current);
+
+      // Fit map to show the full route
+      mapRef.current.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+      setRouteInfo({ distanceKm: result.distanceKm, durationMin: result.durationMin });
+    });
+  }, [routeFrom, routeTo]);
+
+  // ── find nearest farm ────────────────────────────────────────────────────
   const haversine = (a, b) => {
-    const toRad = (v) => (v * Math.PI) / 180;
-    const [lat1, lon1] = a;
-    const [lat2, lon2] = b;
-    const R = 6371; // Earth radius km
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const s =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(s));
+    const R = 6371, toRad = v => v * Math.PI / 180;
+    const dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
+    return 2 * R * Math.asin(Math.sqrt(
+      Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2
+    ));
   };
 
   const highlightNearest = () => {
-    if (!mapInstanceRef.current || !Array.isArray(farms) || farms.length === 0) return;
-    const center = mapInstanceRef.current.getCenter();
-    const centerArr = [center.lat, center.lng];
+    if (!mapRef.current || !farms.length) return;
+    const c = mapRef.current.getCenter();
     let best = null;
     for (const f of farms) {
       if (!Array.isArray(f.coords) || f.coords.length < 2) continue;
-      const d = haversine(centerArr, f.coords);
+      const d = haversine([c.lat, c.lng], f.coords);
       if (!best || d < best.d) best = { farm: f, d };
     }
-    if (best && best.farm && Array.isArray(best.farm.coords)) {
-      mapInstanceRef.current.setView(best.farm.coords, 13);
+    if (best) {
+      mapRef.current.setView(best.farm.coords, 13, { animate: true });
       L.popup()
         .setLatLng(best.farm.coords)
-        .setContent(`<strong>${best.farm.name}</strong><div style="font-size:11px;">Grower: ${best.farm.farmer || ''}</div>`) 
-        .openOn(mapInstanceRef.current);
+        .setContent(`<strong>${best.farm.name}</strong><br/><span style="font-size:11px">📍 ${best.d.toFixed(1)} km away</span>`)
+        .openOn(mapRef.current);
     }
+  };
+
+  const locateMe = () => {
+    if (!navigator?.geolocation || !mapRef.current) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        const coords = [p.coords.latitude, p.coords.longitude];
+        setCenter(coords);
+        setLabel("You are here");
+        mapRef.current.setView(coords, 12, { animate: true });
+      },
+      () => {}
+    );
   };
 
   return (
     <div className="w-full h-full min-h-[300px] relative rounded-3xl overflow-hidden shadow-inner">
-      <div className="absolute left-4 top-4 z-30">
+
+      {/* Toolbar */}
+      <div className="absolute left-3 top-3 z-30 flex flex-col gap-2">
         <button
           type="button"
-          aria-label="Find nearest farm"
           onClick={highlightNearest}
-          className="bg-white text-gray-800 dark:bg-black dark:text-white px-3 py-2 rounded-lg shadow-md border border-gray-200 dark:border-gray-800 font-medium"
+          className="bg-white dark:bg-zinc-900 text-gray-800 dark:text-white px-3 py-2 rounded-xl shadow-md border border-gray-200 dark:border-zinc-700 font-semibold text-xs hover:bg-gray-50 transition flex items-center gap-1.5"
         >
-          Find nearest farm
+          🌾 Find nearest farm
+        </button>
+        <button
+          type="button"
+          onClick={locateMe}
+          className="bg-white dark:bg-zinc-900 text-gray-800 dark:text-white px-3 py-2 rounded-xl shadow-md border border-gray-200 dark:border-zinc-700 font-semibold text-xs hover:bg-gray-50 transition flex items-center gap-1.5"
+        >
+          📍 Locate me
         </button>
       </div>
-      <div ref={mapContainerRef} className="w-full h-full absolute inset-0 z-10" />
+
+      {/* Route info badge */}
+      {isRouting && (
+        <div className="absolute top-3 right-3 z-30 bg-white dark:bg-zinc-900 px-3 py-2 rounded-xl shadow-md text-xs font-semibold text-agri-brown animate-pulse">
+          Calculating route…
+        </div>
+      )}
+      {routeInfo && !isRouting && (
+        <div className="absolute top-3 right-3 z-30 bg-white dark:bg-zinc-900 px-3 py-2 rounded-xl shadow-md text-xs font-semibold flex gap-3 border border-agri-green/20">
+          <span>🛣️ {routeInfo.distanceKm} km</span>
+          <span>⏱ {routeInfo.durationMin} min drive</span>
+        </div>
+      )}
+
+      <div ref={containerRef} className="w-full h-full absolute inset-0 z-10" />
     </div>
   );
 }

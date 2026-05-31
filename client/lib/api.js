@@ -434,6 +434,39 @@ export const apiService = {
     }
   },
 
+  // Clear chat history for an order
+  clearChat: async (orderId) => {
+    try {
+      const res = await api.delete(`/chat/${orderId}/clear`);
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  // Submit a review for a farmer
+  submitReview: async (farmerId, { rating, comment }) => {
+    try {
+      const res = await api.post(`/reviews/${farmerId}`, { rating, comment });
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  // Get public profile (includes trust score)
+  getPublicProfile: async (userId) => {
+    try {
+      const res = await api.get(`/users/${userId}`);
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      throw e;
+    }
+  },
+
   // OpenAI AI Pricing Suggestion
   getAiPriceSuggestion: async (cropDetails) => {
     try {
