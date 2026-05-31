@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Landmark,
   Clock,
@@ -12,193 +12,400 @@ import {
   Trophy,
   Lock,
   TimerReset,
+  Trash2,
+  Search,
+  SlidersHorizontal,
+  TrendingUp,
+  Users,
+  Gavel,
+  X,
+  TriangleAlert,
 } from "lucide-react";
 import Header from "../../components/shared/Header";
 import { Card } from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
+import Badge from "../../components/ui/Badge";
 import { apiService } from "../../lib/api";
 import { useAuthStore } from "../../store/authStore";
 import Link from "next/link";
 import RawImage from "../../components/ui/RawImage";
+import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
+// ─── Phase helper ─────────────────────────────────────────────────────────────
 const getAuctionPhase = (auction) => {
   if (!auction) return "upcoming";
-
   const now = new Date();
-  const startTime = new Date(auction.startTime);
-  const endTime = new Date(auction.endTime);
-
-  if (auction.status === "ENDED" || auction.status === "CLOSED" || now >= endTime) return "past";
-  if (auction.status === "LIVE" || (now >= startTime && now < endTime)) return "live";
+  const start = new Date(auction.startTime);
+  const end = new Date(auction.endTime);
+  if (auction.status === "ENDED" || auction.status === "CLOSED" || now >= end) return "past";
+  if (auction.status === "LIVE" || (now >= start && now < end)) return "live";
   return "upcoming";
 };
 
-function CountdownTimer({ endTime }) {
+// ─── Countdown ────────────────────────────────────────────────────────────────
+function Countdown({ endTime, urgent }) {
   const [timeLeft, setTimeLeft] = useState("");
-
   useEffect(() => {
-    const calculateTime = () => {
-      const difference = new Date(endTime) - new Date();
-      if (difference <= 0) {
-        setTimeLeft("Expired");
-        return;
-      }
-
-      const hours = Math.floor(difference / (1000 * 60 * 60));
-      const minutes = Math.floor((difference / 1000 / 60) % 60);
-      const seconds = Math.floor((difference / 1000) % 60);
-
-      const parts = [];
-      if (hours > 0) parts.push(`${hours}h`);
-      parts.push(`${minutes}m`);
-      parts.push(`${seconds}s`);
-      setTimeLeft(parts.join(" "));
+    const calc = () => {
+      const diff = new Date(endTime) - new Date();
+      if (diff <= 0) { setTimeLeft("Expired"); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft([h > 0 && `${h}h`, `${m}m`, `${s}s`].filter(Boolean).join(" "));
     };
-
-    calculateTime();
-    const interval = setInterval(calculateTime, 1000);
-    return () => clearInterval(interval);
+    calc();
+    const id = setInterval(calc, 1000);
+    return () => clearInterval(id);
   }, [endTime]);
 
   return (
-    <span className="font-extrabold text-red-500 flex items-center gap-1">
+    <span className={`font-extrabold flex items-center gap-1 ${urgent ? "text-red-500 animate-pulse" : "text-red-500"}`}>
       <Clock className="w-3.5 h-3.5" /> {timeLeft}
     </span>
   );
 }
 
-function AuctionCard({ auction, phase }) {
-  const isLive = phase === "live";
-  const isUpcoming = phase === "upcoming";
-  const isPast = phase === "past";
-
+// ─── Delete confirm modal ─────────────────────────────────────────────────────
+function DeleteModal({ auction, onConfirm, onCancel, isPending }) {
   return (
-    <Card hoverEffect className="border-agri-green/5 p-6 flex flex-col justify-between h-[450px]">
-      <div className="space-y-4">
-        <div className="relative h-48 w-full rounded-2xl overflow-hidden bg-agri-green/10">
-          <RawImage
-            src={auction.image || auction.images?.[0] || "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&q=80&w=600"}
-            alt={auction.productName || auction.product?.name || "Auction lot"}
-            width={800}
-            height={320}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-
-          {isLive && (
-            <div className="absolute top-3 left-3 bg-red-500 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow">
-              <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
-              LIVE BIDDING
-            </div>
-          )}
-
-          {isUpcoming && (
-            <div className="absolute top-3 left-3 bg-amber-600 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow">
-              <Lock className="w-3 h-3" />
-              UPCOMING
-            </div>
-          )}
-
-          {isPast && (
-            <div className="absolute top-3 left-3 bg-gray-900/90 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow">
-              RESULT
-            </div>
-          )}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={onCancel}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 16 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-zinc-900 rounded-3xl border border-agri-green/10 p-6 max-w-sm w-full shadow-2xl space-y-4"
+      >
+        <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto">
+          <Trash2 className="w-7 h-7 text-red-500" />
+        </div>
+        <div className="text-center space-y-1.5">
+          <h3 className="text-base font-black text-agri-green-dark dark:text-white">
+            Delete this auction?
+          </h3>
+          <p className="text-xs font-bold text-agri-green">
+            {auction?.productName}
+          </p>
+          <p className="text-xs text-agri-brown leading-relaxed mt-1">
+            This will permanently remove the auction and all associated bids. This action cannot be undone.
+          </p>
         </div>
 
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-xs gap-3">
-            <div className="flex items-center gap-1 text-agri-brown font-bold min-w-0">
-              <MapPin className="w-3.5 h-3.5 text-agri-green shrink-0" />
-              <span className="truncate">{auction.farmerLocation}</span>
-            </div>
-            {isLive ? (
-              <CountdownTimer endTime={auction.endTime} />
-            ) : isUpcoming ? (
-              <span className="text-amber-600 font-extrabold text-[10px] uppercase">Starts soon</span>
+        <div className="bg-amber-500/8 border border-amber-500/20 rounded-2xl p-3 flex items-start gap-2">
+          <TriangleAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+            Only upcoming auctions can be deleted. Live auctions cannot be cancelled once bidding has started.
+          </p>
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="flex-1 py-2.5 rounded-2xl text-xs font-bold border border-agri-green/15 text-agri-brown hover:bg-agri-green/5 transition disabled:opacity-50"
+          >
+            Keep Auction
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            className="flex-1 py-2.5 rounded-2xl text-xs font-bold bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60 flex items-center justify-center gap-1.5"
+          >
+            {isPending ? (
+              <>
+                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Deleting…
+              </>
             ) : (
-              <span className="text-gray-500 font-extrabold text-[10px] uppercase">Closed</span>
+              <><Trash2 className="w-3.5 h-3.5" /> Delete</>
             )}
-          </div>
-
-          <Link href={`/auctions/${auction.id}`}>
-            <h4 className="text-base font-extrabold text-agri-green-dark dark:text-agri-green-light hover:underline truncate">
-              {auction.productName}
-            </h4>
-          </Link>
-          <p className="text-[10px] text-agri-brown">Farmer: {auction.farmerName}</p>
+          </button>
         </div>
-      </div>
-
-      <div className="border-t border-agri-green/5 pt-3 mt-4 space-y-4">
-        <div className="grid grid-cols-2 gap-4 bg-agri-green/5 dark:bg-white/5 p-3 rounded-xl text-xs font-semibold">
-          <div>
-            <span className="text-[9px] text-agri-brown font-bold uppercase">
-              {isPast ? "Final Price" : isUpcoming ? "Starting Price" : "Current Bid"}
-            </span>
-            <p className="text-base font-black text-agri-green">
-              ₹{isPast ? (auction.currentBid || auction.startingPrice) : isUpcoming ? auction.startingPrice : auction.currentBid}/kg
-            </p>
-          </div>
-          <div>
-            <span className="text-[9px] text-agri-brown font-bold uppercase block text-right">Lot Size</span>
-            <p className="text-sm font-extrabold text-agri-green-dark dark:text-agri-green-light text-right">
-              {auction.lotSize} {auction.unit}
-            </p>
-          </div>
-        </div>
-
-        {isLive ? (
-          <Link href={`/auctions/${auction.id}`} className="block w-full">
-            <Button variant="outline" className="w-full py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1">
-              Enter Auction Room <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
-          </Link>
-        ) : isUpcoming ? (
-          <div className="w-full rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 font-semibold">
-            Bidding opens at {new Date(auction.startTime).toLocaleString()}
-          </div>
-        ) : (
-          <Link href={`/auctions/${auction.id}`} className="block w-full">
-            <Button variant="outline" className="w-full py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1">
-              View Result <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
-          </Link>
-        )}
-      </div>
-    </Card>
+      </motion.div>
+    </motion.div>
   );
 }
 
+// ─── Stat pill ────────────────────────────────────────────────────────────────
+function StatPill({ icon: Icon, label, value, color }) {
+  return (
+    <div className="flex items-center gap-2.5 bg-white/60 dark:bg-zinc-900/60 border border-agri-green/5 rounded-2xl px-4 py-3">
+      <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${color}`}>
+        <Icon className="w-4 h-4" />
+      </div>
+      <div>
+        <p className="text-lg font-black text-agri-green-dark dark:text-white leading-none">{value}</p>
+        <p className="text-[10px] text-agri-brown font-bold mt-0.5">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Auction card ─────────────────────────────────────────────────────────────
+function AuctionCard({ auction, phase, isFarmerOwner, onDeleteClick }) {
+  const isLive = phase === "live";
+  const isUpcoming = phase === "upcoming";
+  const isPast = phase === "past";
+  const urgent = isLive && (new Date(auction.endTime) - new Date()) < 1800000; // <30 min
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.3 }}
+    >
+      <Card
+        hoverEffect
+        className={`border-agri-green/5 p-5 flex flex-col justify-between h-[460px] relative overflow-hidden ${
+          isLive ? "ring-1 ring-red-500/20" : ""
+        }`}
+      >
+        {/* ✅ DELETE button — farmer owner on UPCOMING or PAST auctions */}
+        {isFarmerOwner && (isUpcoming || isPast) && (
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); onDeleteClick(auction); }}
+            title="Delete this upcoming auction"
+            className="absolute top-3 right-3 z-20 w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 hover:border-red-500 flex items-center justify-center transition-all duration-200 group shadow-sm"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+
+        {/* 🔒 LIVE lock — farmer can see but NOT delete */}
+        {isFarmerOwner && isLive && (
+          <div
+            title="Live auctions cannot be deleted"
+            className="absolute top-3 right-3 z-20 w-8 h-8 rounded-xl bg-zinc-500/10 text-zinc-400 border border-zinc-500/10 flex items-center justify-center cursor-not-allowed"
+          >
+            <Lock className="w-3.5 h-3.5" />
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {/* Image */}
+          <div className="relative h-44 w-full rounded-2xl overflow-hidden bg-agri-green/10">
+            <RawImage
+              src={auction.image || auction.images?.[0] || "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&q=80&w=600"}
+              alt={auction.productName || "Auction lot"}
+              width={800} height={320}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+
+            {isLive && (
+              <div className="absolute top-2.5 left-2.5 bg-red-500 text-white text-[9px] font-black px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-lg">
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+                LIVE BIDDING
+              </div>
+            )}
+            {isUpcoming && (
+              <div className="absolute top-2.5 left-2.5 bg-amber-600 text-white text-[9px] font-black px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow">
+                <Lock className="w-3 h-3" /> UPCOMING
+              </div>
+            )}
+            {isPast && (
+              <div className="absolute top-2.5 left-2.5 bg-zinc-900/80 text-white text-[9px] font-black px-2.5 py-1 rounded-full shadow">
+                ENDED
+              </div>
+            )}
+
+            {/* Bid count badge */}
+            {auction.bidCount > 0 && (
+              <div className="absolute bottom-2.5 right-2.5 bg-black/60 backdrop-blur text-white text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Users className="w-2.5 h-2.5" /> {auction.bidCount} bids
+              </div>
+            )}
+          </div>
+
+          {/* Meta */}
+          <div className="space-y-1 pr-2">
+            <div className="flex items-center justify-between text-xs gap-3">
+              <div className="flex items-center gap-1 text-agri-brown font-semibold min-w-0">
+                <MapPin className="w-3.5 h-3.5 text-agri-green shrink-0" />
+                <span className="truncate">{auction.farmerLocation}</span>
+              </div>
+              {isLive ? (
+                <Countdown endTime={auction.endTime} urgent={urgent} />
+              ) : isUpcoming ? (
+                <span className="text-amber-600 font-extrabold text-[10px] uppercase whitespace-nowrap">Starts soon</span>
+              ) : (
+                <span className="text-zinc-400 font-bold text-[10px] uppercase">Closed</span>
+              )}
+            </div>
+
+            <Link href={`/auctions/${auction.id}`}>
+              <h4 className="text-sm font-black text-agri-green-dark dark:text-agri-green-light hover:underline truncate leading-tight">
+                {auction.productName}
+              </h4>
+            </Link>
+            <p className="text-[10px] text-agri-brown">by {auction.farmerName}</p>
+          </div>
+        </div>
+
+        {/* Bottom section */}
+        <div className="border-t border-agri-green/5 pt-3 mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3 bg-agri-green/5 dark:bg-white/5 p-3 rounded-xl">
+            <div>
+              <span className="text-[9px] text-agri-brown font-bold uppercase tracking-wider block">
+                {isPast ? "Final Price" : isUpcoming ? "Starting Price" : "Current Bid"}
+              </span>
+              <p className="text-base font-black text-agri-green">
+                ₹{isPast ? (auction.currentBid || auction.startingPrice) : isUpcoming ? auction.startingPrice : auction.currentBid}/kg
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] text-agri-brown font-bold uppercase tracking-wider block">Lot Size</span>
+              <p className="text-sm font-extrabold text-agri-green-dark dark:text-agri-green-light">
+                {auction.lotSize} {auction.unit}
+              </p>
+            </div>
+          </div>
+
+          {isLive ? (
+            <Link href={`/auctions/${auction.id}`} className="block w-full">
+              <Button variant="outline" className="w-full py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 hover:bg-agri-green hover:text-white hover:border-agri-green transition-all">
+                <Gavel className="w-3.5 h-3.5" /> Enter Auction Room <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </Link>
+          ) : isUpcoming ? (
+            <div className="w-full rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[10px] text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+              Opens {new Date(auction.startTime).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            </div>
+          ) : (
+            <Link href={`/auctions/${auction.id}`} className="block w-full">
+              <Button variant="outline" className="w-full py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1 opacity-70 hover:opacity-100 transition-opacity">
+                <Trophy className="w-3.5 h-3.5" /> View Result <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </Link>
+          )}
+        </div>
+      </Card>
+    </motion.div>
+  );
+}
+
+// ─── Section header ───────────────────────────────────────────────────────────
+function SectionHeader({ icon, label, count, color }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        {icon}
+        <h2 className="text-lg font-black text-agri-green-dark dark:text-agri-green-light">{label}</h2>
+        {count > 0 && (
+          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${color}`}>{count}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AuctionsListingPage() {
   const { user, isAuthenticated } = useAuthStore();
+  const queryClient = useQueryClient();
+  const isFarmer = isAuthenticated && user?.role === "FARMER";
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterPhase, setFilterPhase] = useState("all"); // all | live | upcoming | past
 
   const { data: auctionsRes, isLoading } = useQuery({
     queryKey: ["auctions"],
     queryFn: () => apiService.getAuctions(),
   });
 
-  const auctions = auctionsRes?.data || [];
-  const groupedAuctions = useMemo(() => {
-    const live = [];
-    const upcoming = [];
-    const past = [];
+  const { mutate: deleteAuction, isPending: isDeleting } = useMutation({
+    mutationFn: (id) => apiService.deleteAuction(id),
+    onSuccess: () => {
+      toast.success("Auction deleted successfully.");
+      queryClient.invalidateQueries(["auctions"]);
+      queryClient.invalidateQueries(["farmerAuctions"]);
+      setDeleteTarget(null);
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || "Failed to delete auction.");
+      setDeleteTarget(null);
+    },
+  });
 
-    auctions.forEach((auction) => {
-      const phase = getAuctionPhase(auction);
-      if (phase === "live") live.push(auction);
-      else if (phase === "upcoming") upcoming.push(auction);
-      else past.push(auction);
+  const allAuctions = useMemo(() => auctionsRes?.data || [], [auctionsRes]);
+
+  const grouped = useMemo(() => {
+    const live = [], upcoming = [], past = [];
+    allAuctions.forEach((a) => {
+      const p = getAuctionPhase(a);
+      if (p === "live") live.push(a);
+      else if (p === "upcoming") upcoming.push(a);
+      else past.push(a);
     });
-
     return { live, upcoming, past };
-  }, [auctions]);
+  }, [allAuctions]);
+
+  // Filter + search
+  const filtered = useMemo(() => {
+    let list = allAuctions;
+    if (filterPhase !== "all") list = grouped[filterPhase] || [];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(a =>
+        a.productName?.toLowerCase().includes(q) ||
+        a.farmerName?.toLowerCase().includes(q) ||
+        a.farmerLocation?.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [allAuctions, grouped, filterPhase, searchQuery]);
+
+  const filteredGrouped = useMemo(() => {
+    const live = [], upcoming = [], past = [];
+    filtered.forEach((a) => {
+      const p = getAuctionPhase(a);
+      if (p === "live") live.push(a);
+      else if (p === "upcoming") upcoming.push(a);
+      else past.push(a);
+    });
+    return { live, upcoming, past };
+  }, [filtered]);
+
+  const farmerUserId = user?.id || user?._id;
 
   return (
-    <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 text-current transition-colors pb-16">
+    <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 text-current transition-colors pb-20">
       <Header />
 
+      {/* Delete confirm modal */}
+      <AnimatePresence>
+        {deleteTarget && (
+          <DeleteModal
+            auction={deleteTarget}
+            onConfirm={() => deleteAuction(deleteTarget.id)}
+            onCancel={() => setDeleteTarget(null)}
+            isPending={isDeleting}
+          />
+        )}
+      </AnimatePresence>
+
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+
+        {/* ── Page header ─────────────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-agri-green-dark dark:text-agri-green-light tracking-tight">
               Live Bidding Arena
@@ -207,91 +414,210 @@ export default function AuctionsListingPage() {
               Participate in high-margin crop auctions in real-time.
             </p>
           </div>
-
-          {isAuthenticated && user?.role === "FARMER" && (
+          {isFarmer && (
             <Link href="/auctions/create">
-              <Button variant="primary" className="flex items-center gap-1.5 py-2.5 rounded-xl text-xs">
-                <PlusCircle className="w-4.5 h-4.5" />
-                <span>Launch New Auction</span>
+              <Button variant="primary" className="flex items-center gap-1.5 py-2.5 rounded-xl text-xs shadow-md shadow-agri-green/20">
+                <PlusCircle className="w-4 h-4" />
+                Launch New Auction
               </Button>
             </Link>
           )}
         </div>
 
+        {/* ── Stats strip ─────────────────────────────────────────── */}
+        {!isLoading && allAuctions.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatPill icon={TrendingUp}  label="Live Now"       value={grouped.live.length}     color="bg-red-500/10 text-red-500" />
+            <StatPill icon={Clock}       label="Upcoming"       value={grouped.upcoming.length} color="bg-amber-500/10 text-amber-600" />
+            <StatPill icon={Trophy}      label="Past Auctions"  value={grouped.past.length}     color="bg-agri-green/10 text-agri-green" />
+            <StatPill icon={Gavel}       label="Total Lots"     value={allAuctions.length}      color="bg-agri-brown/10 text-agri-brown" />
+          </div>
+        )}
+
+        {/* ── Info banner ─────────────────────────────────────────── */}
         <div className="p-4 bg-agri-green/5 border border-agri-green/10 rounded-2xl flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-agri-green shrink-0 mt-0.5" />
           <p className="text-xs text-agri-brown dark:text-gray-300 leading-relaxed">
             Live auctions can be entered and bid on. Upcoming auctions are visible but locked until their start time. Past auctions show results only.
+            {isFarmer && (
+              <span className="ml-1 text-agri-green font-semibold">
+                As a farmer, you can delete your <strong>upcoming</strong> auctions — live auctions cannot be removed once bidding starts.
+              </span>
+            )}
           </p>
         </div>
 
+        {/* ── Search + filter bar ──────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-agri-brown/50" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by product, farmer, or location..."
+              className="w-full pl-10 pr-10 py-2.5 rounded-2xl border border-agri-green/10 bg-white/70 dark:bg-zinc-900/70 text-xs focus:outline-none focus:ring-2 focus:ring-agri-green/20 text-agri-green-dark dark:text-gray-200 placeholder:text-agri-brown/50"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-agri-brown/50 hover:text-agri-green transition">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex gap-1.5 bg-white/60 dark:bg-zinc-900/60 border border-agri-green/5 rounded-2xl p-1">
+            {[
+              { value: "all",      label: "All" },
+              { value: "live",     label: "🔴 Live" },
+              { value: "upcoming", label: "⏰ Upcoming" },
+              { value: "past",     label: "🏆 Past" },
+            ].map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setFilterPhase(value)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all ${
+                  filterPhase === value
+                    ? "bg-agri-green text-white shadow-sm"
+                    : "text-agri-brown hover:bg-agri-green/5"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Content ─────────────────────────────────────────────── */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="glass-card rounded-[2rem] p-5 h-80 animate-pulse bg-gray-200 dark:bg-zinc-800" />
+              <div key={i} className="h-[460px] rounded-3xl bg-gray-200 dark:bg-zinc-800 animate-pulse" />
             ))}
           </div>
-        ) : auctions.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="text-center py-20 bg-white/40 dark:bg-black/10 rounded-3xl border border-agri-green/5">
-            <Landmark className="w-12 h-12 text-agri-brown mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-agri-green-dark">No Auctions Available</h3>
-            <p className="text-xs text-agri-brown mt-1.5">Check back later for live, upcoming, or past auction results.</p>
+            <Landmark className="w-12 h-12 text-agri-brown/30 mx-auto mb-4" />
+            <h3 className="text-base font-bold text-agri-green-dark dark:text-white">
+              {searchQuery ? `No results for "${searchQuery}"` : "No auctions available"}
+            </h3>
+            <p className="text-xs text-agri-brown mt-1.5">
+              {searchQuery ? "Try a different search term." : "Check back later for new auction lots."}
+            </p>
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="mt-4 text-xs text-agri-green font-bold hover:underline">
+                Clear search
+              </button>
+            )}
           </div>
         ) : (
-          <div className="space-y-10">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <h2 className="text-lg font-black text-agri-green-dark dark:text-agri-green-light">Live Auctions</h2>
-              </div>
-              {groupedAuctions.live.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-agri-green/10 bg-white/50 dark:bg-black/10 p-8 text-sm text-agri-brown">
-                  No live auctions right now.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  {groupedAuctions.live.map((auction) => (
-                    <AuctionCard key={auction.id} auction={auction} phase="live" />
-                  ))}
-                </div>
-              )}
-            </section>
+          <div className="space-y-12">
 
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <TimerReset className="w-4 h-4 text-amber-600" />
-                <h2 className="text-lg font-black text-agri-green-dark dark:text-agri-green-light">Upcoming Bidding</h2>
-              </div>
-              {groupedAuctions.upcoming.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-agri-green/10 bg-white/50 dark:bg-black/10 p-8 text-sm text-agri-brown">
-                  No upcoming auctions scheduled.
+            {/* Live */}
+            {filteredGrouped.live.length > 0 && (
+              <section className="space-y-5">
+                <SectionHeader
+                  icon={<span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse inline-block" />}
+                  label="Live Auctions"
+                  count={filteredGrouped.live.length}
+                  color="bg-red-500/10 text-red-600"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <AnimatePresence>
+                    {filteredGrouped.live.map((a) => (
+                      <AuctionCard
+                        key={a.id}
+                        auction={a}
+                        phase="live"
+                        isFarmerOwner={isFarmer && String(a.farmer === farmerUserId || a.farmerId === farmerUserId || a.farmer?._id === farmerUserId || a.farmer?.id === farmerUserId)}
+                        onDeleteClick={setDeleteTarget}
+                      />
+                    ))}
+                  </AnimatePresence>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  {groupedAuctions.upcoming.map((auction) => (
-                    <AuctionCard key={auction.id} auction={auction} phase="upcoming" />
-                  ))}
-                </div>
-              )}
-            </section>
+              </section>
+            )}
 
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-agri-green" />
-                <h2 className="text-lg font-black text-agri-green-dark dark:text-agri-green-light">Past Results</h2>
-              </div>
-              {groupedAuctions.past.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-agri-green/10 bg-white/50 dark:bg-black/10 p-8 text-sm text-agri-brown">
-                  No finished auctions yet.
+            {/* Upcoming */}
+            {filteredGrouped.upcoming.length > 0 && (
+              <section className="space-y-5">
+                <SectionHeader
+                  icon={<TimerReset className="w-4 h-4 text-amber-600" />}
+                  label="Upcoming Bidding"
+                  count={filteredGrouped.upcoming.length}
+                  color="bg-amber-500/10 text-amber-700"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <AnimatePresence>
+                    {filteredGrouped.upcoming.map((a) => (
+                      <AuctionCard
+                        key={a.id}
+                        auction={a}
+                        phase="upcoming"
+                        isFarmerOwner={isFarmer && (
+                          a.farmer === farmerUserId ||
+                          a.farmerId === farmerUserId ||
+                          a.farmer?._id === farmerUserId ||
+                          a.farmer?.id === farmerUserId
+                        )}
+                        onDeleteClick={setDeleteTarget}
+                      />
+                    ))}
+                  </AnimatePresence>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  {groupedAuctions.past.map((auction) => (
-                    <AuctionCard key={auction.id} auction={auction} phase="past" />
+              </section>
+            )}
+
+            {/* Past */}
+            {filteredGrouped.past.length > 0 && (
+              <section className="space-y-5">
+                <SectionHeader
+                  icon={<Trophy className="w-4 h-4 text-agri-green" />}
+                  label="Past Results"
+                  count={filteredGrouped.past.length}
+                  color="bg-agri-green/10 text-agri-green"
+                />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {filteredGrouped.past.map((a) => (
+                    <AuctionCard key={a.id} auction={a} phase="past"
+                      isFarmerOwner={isFarmer && (
+                        a.farmer === farmerUserId ||
+                        a.farmerId === farmerUserId ||
+                        a.farmer?._id === farmerUserId ||
+                        a.farmer?.id === farmerUserId
+                      )}
+                      onDeleteClick={setDeleteTarget} />
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            )}
+
+            {/* Show empty sections only if not filtering */}
+            {filterPhase === "all" && !searchQuery && (
+              <>
+                {filteredGrouped.live.length === 0 && (
+                  <section className="space-y-4">
+                    <SectionHeader icon={<span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse inline-block" />} label="Live Auctions" count={0} color="bg-red-500/10 text-red-600" />
+                    <div className="rounded-3xl border border-dashed border-agri-green/10 bg-white/50 dark:bg-black/10 p-10 text-center">
+                      <p className="text-sm text-agri-brown font-semibold">No live auctions right now.</p>
+                      <p className="text-xs text-agri-brown/60 mt-1">Check the upcoming section for what's next.</p>
+                    </div>
+                  </section>
+                )}
+                {filteredGrouped.upcoming.length === 0 && (
+                  <section className="space-y-4">
+                    <SectionHeader icon={<TimerReset className="w-4 h-4 text-amber-600" />} label="Upcoming Bidding" count={0} color="bg-amber-500/10 text-amber-700" />
+                    <div className="rounded-3xl border border-dashed border-agri-green/10 bg-white/50 dark:bg-black/10 p-10 text-center">
+                      <p className="text-sm text-agri-brown font-semibold">No upcoming auctions scheduled.</p>
+                      {isFarmer && (
+                        <Link href="/auctions/create">
+                          <button className="mt-3 text-xs text-agri-green font-bold hover:underline">Launch your first auction →</button>
+                        </Link>
+                      )}
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
           </div>
         )}
       </main>

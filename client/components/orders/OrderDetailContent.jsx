@@ -41,18 +41,33 @@ function buildTimeline(order) {
   if (!order) return [];
   const placed = new Date(order.createdAt);
   const curIdx = ORDER_STAGES.findIndex(s => s.key === order.status);
+
+  // ✅ FIX: DELIVERED is a terminal completed state — no stage should pulse
+  // as "In Progress" once the order is fully done. Without this flag, the
+  // DELIVERED step gets both isDone=true AND isActive=true, so the badge
+  // shows "In Progress" and the icon pulses even after buyer confirmation.
+  const isTerminalComplete = order.status === "DELIVERED";
+
   return ORDER_STAGES.map((stage, idx) => {
-    const isDone   = idx <  curIdx || (idx === curIdx);
-    const isActive = idx === curIdx;
-    const isFuture = idx >  curIdx;
+    const isDone = idx <= curIdx;
+
+    // ✅ FIX: isActive is only true when the step is the CURRENT step AND
+    // the order has NOT yet reached a terminal completed state.
+    const isActive = idx === curIdx && !isTerminalComplete;
+    const isFuture = idx > curIdx;
+
     const serverEvent = (order.timeline || []).find(e => e.status === stage.key);
     const actualTime  = serverEvent?.timestamp ? fmtDateTime(serverEvent.timestamp) : null;
     const estimated   = addDays(placed, stage.offsetDays);
-    const etaLabel    = isFuture
+
+    const etaLabel = isFuture
       ? `Expected by ${fmtDate(estimated)}`
       : actualTime
       ? `Completed ${actualTime}`
-      : isActive ? `In progress — expected ${fmtDate(estimated)}` : "Completed";
+      : isActive
+      ? `In progress — expected ${fmtDate(estimated)}`
+      : "Completed";
+
     return { ...stage, isDone, isActive, isFuture, etaLabel, estimatedDate: estimated };
   });
 }
