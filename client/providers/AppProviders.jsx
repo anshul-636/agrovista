@@ -11,11 +11,28 @@ export default function AppProviders({ children }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 1000 * 60 * 30, // 30 minutes - data stays fresh longer
-            gcTime: 1000 * 60 * 60,    // 1 hour - keep data in cache
-            refetchOnWindowFocus: false,
-            refetchOnReconnect: false,
+            // Data is immediately considered stale — so invalidateQueries() from
+            // sockets always triggers a fresh fetch instead of being ignored.
+            staleTime: 0,
+
+            // Keep data in memory for 5 minutes after component unmounts
+            gcTime: 1000 * 60 * 5,
+
+            // Refetch when user switches back to this tab (covers missed socket events)
+            refetchOnWindowFocus: true,
+
+            // Refetch automatically when internet reconnects
+            refetchOnReconnect: true,
+
+            // Retry failed requests once before showing error
             retry: 1,
+
+            // Background polling every 30 seconds as safety net
+            // (catches anything sockets might have missed)
+            refetchInterval: 1000 * 30,
+
+            // Only poll when the tab is visible — saves bandwidth
+            refetchIntervalInBackground: false,
           },
         },
       })
@@ -38,24 +55,18 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
     const OriginalImage = window.Image;
     if (OriginalImage && typeof OriginalImage === 'function') {
       function WrappedImage() {
-        // If called without `new`, log stack and recover by returning a new instance
         const calledWithNew = (new.target !== undefined) || (this instanceof WrappedImage);
         if (!calledWithNew) {
-          // Log clear warning with stack for debugging
-          // eslint-disable-next-line no-console
           console.warn('[Dev] Image was called as a function instead of with `new`. Recovering by using `new Image()`.', new Error().stack);
           return new OriginalImage(...arguments);
         }
         return new OriginalImage(...arguments);
       }
       WrappedImage.prototype = OriginalImage.prototype;
-      // preserve some static properties if present
       Object.getOwnPropertyNames(OriginalImage).forEach((k) => {
         try { WrappedImage[k] = OriginalImage[k]; } catch (e) {}
       });
       window.Image = WrappedImage;
     }
-  } catch (e) {
-    // ignore; this helper is best-effort for dev only
-  }
+  } catch (e) {}
 }
