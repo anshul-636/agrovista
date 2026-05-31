@@ -14,7 +14,6 @@ const createProduct = async (farmerId, data, files) => {
     }
 
     if (images.length === 0) {
-        // Fallback default image to prevent 400 error if user doesn't provide an image URL.
         images = ["https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"]
     }
 
@@ -48,7 +47,7 @@ const getAllProducts = async (query) => {
         minPrice,
         maxPrice,
         fresh,
-        isOrganic, // Added isOrganic
+        isOrganic,
         page = 1,
         limit = 12
     } = query
@@ -56,7 +55,6 @@ const getAllProducts = async (query) => {
     // Build filter object dynamically
     const filter = { isAvailable: true }
 
-    // Text search on name and description
     if (search) {
         filter.$or = [
             { name: { $regex: search, $options: 'i' } },
@@ -64,24 +62,20 @@ const getAllProducts = async (query) => {
         ]
     }
 
-    // Category filter (convert to uppercase to match DB)
     if (category && category !== 'All') {
         filter.category = category.toUpperCase()
     }
-    
-    // Organic filter
+
     if (isOrganic === 'true' || isOrganic === true) {
         filter.isOrganic = true
     }
 
-    // Price range filter
     if (minPrice || maxPrice) {
         filter.price = {}
         if (minPrice) filter.price.$gte = parseFloat(minPrice)
         if (maxPrice) filter.price.$lte = parseFloat(maxPrice)
     }
 
-    // Freshness filter
     if (fresh) {
         const days = fresh === '1d' ? 1 : fresh === '3d' ? 3 : 7
         filter.createdAt = {
@@ -103,8 +97,41 @@ const getAllProducts = async (query) => {
             .limit(limitNum)
     ])
 
+    // ── TRUST SCORE FIX ──────────────────────────────────────────────────────
+    // Collect unique farmer IDs from this page of results, then fetch all
+    // trust scores in parallel (one Promise.all instead of N sequential calls).
+    const uniqueFarmerIds = [...new Set(
+        products
+            .map(p => p.farmer?._id?.toString())
+            .filter(Boolean)
+    )]
+
+    const trustMap = {}
+    await Promise.all(
+        uniqueFarmerIds.map(async (farmerId) => {
+            try {
+                const trustData = await getTrustScore(farmerId)
+                trustMap[farmerId] = trustData
+            } catch (err) {
+                // If trust score fails for one farmer, don't break the whole list
+                trustMap[farmerId] = { trustScore: 20, avgRating: 0, totalReviews: 0, completionRate: 0 }
+            }
+        })
+    )
+
+    // Attach trust data to each product's farmer object
+    const productsWithTrust = products.map(product => {
+        const productObj = product.toJSON()
+        const farmerId = productObj.farmer?._id?.toString()
+        if (farmerId && trustMap[farmerId]) {
+            productObj.farmer = { ...productObj.farmer, ...trustMap[farmerId] }
+        }
+        return productObj
+    })
+    // ─────────────────────────────────────────────────────────────────────────
+
     return {
-        products,
+        products: productsWithTrust,
         total,
         page: pageNum,
         totalPages: Math.ceil(total / limitNum)
@@ -123,7 +150,6 @@ const getProductById = async (productId) => {
     // Add trust score to the farmer data
     const trustData = await getTrustScore(product.farmer._id)
 
-    // Convert to plain object so we can add trust data
     const productObj = product.toJSON()
     productObj.farmer = { ...productObj.farmer, ...trustData }
 
@@ -137,7 +163,6 @@ const getFarmerProducts = async (farmerId) => {
     const products = await Product.find({ farmer: farmerId })
         .sort({ createdAt: -1 })
 
-    // Add order count to each product
     const Order = require('../../models/Order')
     const productsWithCounts = await Promise.all(
         products.map(async (product) => {
@@ -166,17 +191,13 @@ const updateProduct = async (productId, farmerId, farmerName, data, files) => {
         const newPrice = parseFloat(data.price)
 
         if (newPrice < existing.price) {
-            // Price drop: notify all wishlisters via Socket.IO fan-out
             const { notifyPriceDrop } = require('../wishlist/wishlist.service')
             await notifyPriceDrop(productId, existing.price, newPrice, existing.name, farmerName)
         } else {
-            // Price increase: just log it silently
             await PriceHistory.create({ product: productId, price: existing.price })
         }
     }
 
-
-    // Use new images if uploaded, otherwise keep existing
     const images = files && files.length > 0
         ? await uploadFiles(files)
         : existing.images
@@ -201,7 +222,7 @@ const updateProduct = async (productId, farmerId, farmerName, data, files) => {
     const updated = await Product.findByIdAndUpdate(
         productId,
         updateData,
-        { new: true }   // return the updated document, not the old one
+        { new: true }
     ).populate('farmer', 'name avatar')
 
     return updated
@@ -219,15 +240,10 @@ const deleteProduct = async (productId, farmerId) => {
         throw new ApiError(403, 'You can only delete your own products')
     }
 
-    // Delete images from Cloudinary
     for (const imageUrl of existing.images) {
         try {
-            // Extract public_id from URL
-            // URL format: https://res.cloudinary.com/cloudname/image/upload/v123/agrovista/products/filename.jpg
             const parts = imageUrl.split('/')
             const filename = parts[parts.length - 1].split('.')[0]
-            const folder = parts[parts.length - 2]
-            const publicId = folder + '/' + filename
             await cloudinary.uploader.destroy('agrovista/products/' + filename)
         } catch (err) {
             console.error('Cloudinary delete failed:', err.message)
