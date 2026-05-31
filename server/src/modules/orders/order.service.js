@@ -1,5 +1,6 @@
 const Order = require('../../models/Order')
 const Product = require('../../models/Product')
+const Review = require('../../models/Review')
 const ApiError = require('../../utils/ApiError')
 const { getIO } = require('../../config/socket')
 
@@ -142,7 +143,17 @@ const getBuyerOrders = async (buyerId) => {
         .populate('farmer', 'name avatar')
         .sort({ createdAt: -1 })
 
-    return orders
+    // Find all farmers this buyer has already reviewed so the UI can
+    // permanently hide the "Leave Review" button after a refresh.
+    const existingReviews = await Review.find({ giver: buyerId }).select('receiver').lean()
+    const reviewedFarmerIds = new Set(existingReviews.map((r) => r.receiver.toString()))
+
+    // Attach a hasReview flag to each plain order object
+    return orders.map((order) => {
+        const obj = order.toObject()
+        obj.hasReview = reviewedFarmerIds.has(order.farmer._id.toString())
+        return obj
+    })
 }
 
 // ──────────────────────────────────────────────

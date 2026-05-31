@@ -70,6 +70,9 @@ const normalizeOrder = (item) => {
     unit: item.unit || item.product?.unit || "kg",
     quantity: Number(item.quantity || 0),
     totalAmount: Number(item.totalAmount || 0),
+    // Persisted flag from the server — true when this buyer already reviewed
+    // the farmer for this order. Prevents "Leave Review" reappearing on refresh.
+    hasReview: Boolean(item.hasReview),
   };
 };
 

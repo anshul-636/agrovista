@@ -126,7 +126,9 @@ export default function OrdersPage() {
   const queryClient = useQueryClient();
   const { user, isAuthenticated } = useAuthStore();
 
-  // Track which orders have already been reviewed this session
+  // Optimistic in-session tracking — supplements the server-side hasReview flag.
+  // order.hasReview (from API) is the durable source of truth across refreshes;
+  // reviewedIds provides instant UI feedback for reviews submitted this session.
   const [reviewedIds, setReviewedIds] = useState([]);
   // Which order the review modal is open for
   const [reviewingOrder, setReviewingOrder] = useState(null);
@@ -228,7 +230,9 @@ export default function OrdersPage() {
                 const isDelivered  = order.status === "DELIVERED";
                 const isCancelled  = order.status === "CANCELLED";
                 const isBuyer      = user.role === "BUYER";
-                const alreadyReviewed = reviewedIds.includes(order.id);
+                // hasReview comes from the server (survives refresh);
+                // reviewedIds is the optimistic in-session fallback.
+                const alreadyReviewed = order.hasReview || reviewedIds.includes(order.id);
                 const closedForInteraction = isDelivered || isCancelled;
 
                 return (
