@@ -261,6 +261,13 @@ const verifyOrderDelivery = async (orderId, buyerId) => {
     validateTransition(order.status, 'DELIVERED')
 
     order.status = 'DELIVERED'
+
+    // For COD orders, payment is collected at the door — mark it Paid on delivery confirmation.
+    // For ONLINE orders, paymentStatus was already set to 'Paid' at payment verification time.
+    if (order.paymentMethod === 'COD') {
+        order.paymentStatus = 'Paid'
+    }
+
     await order.save()
 
     await order.populate([
