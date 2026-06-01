@@ -8,6 +8,7 @@ const Product = require('../../models/Product')
 const getFarmerAnalytics = async (farmerId) => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
 
     // Run all 5 queries at the same time for speed
     const [
@@ -16,7 +17,8 @@ const getFarmerAnalytics = async (farmerId) => {
         categoryBreakdown,
         ordersByStatus,
         monthlySummary,
-        totalProducts
+        totalProducts,
+        prevMonthlySummary
     ] = await Promise.all([
 
         // Revenue per day for last 7 days
@@ -140,7 +142,24 @@ const getFarmerAnalytics = async (farmerId) => {
         ]),
 
         // Total active product listings
-        Product.countDocuments({ farmer: farmerId, isAvailable: true })
+        Product.countDocuments({ farmer: farmerId, isAvailable: true }),
+
+        // Previous 30-day window (days 31–60 ago) — used to compute growth %
+        Order.aggregate([
+            {
+                $match: {
+                    farmer: farmerId,
+                    status: 'DELIVERED',
+                    createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalRevenue: { $sum: '$totalAmount' }
+                }
+            }
+        ])
     ])
 
     const summary = monthlySummary[0] || {
@@ -158,6 +177,14 @@ const getFarmerAnalytics = async (farmerId) => {
     const avgOrderValue = summary.totalOrders > 0
         ? Math.round(thisMonthRevenue / summary.totalOrders)
         : 0
+
+    // Compute month-over-month revenue growth as a signed integer percentage.
+    // prevMonthRevenue === 0 and thisMonth > 0  → treat as +100% (new revenue)
+    // Both zero                                 → 0% (no data either month)
+    const prevMonthRevenue = prevMonthlySummary[0]?.totalRevenue || 0
+    const revenueGrowth = prevMonthRevenue === 0
+        ? (thisMonthRevenue > 0 ? 100 : 0)
+        : Math.round(((thisMonthRevenue - prevMonthRevenue) / prevMonthRevenue) * 100)
 
     const revenueTrend = revenueByDay.map((entry) => ({
         date: entry._id,
@@ -197,6 +224,8 @@ const getFarmerAnalytics = async (farmerId) => {
         summary: {
             ...summary,
             thisMonthRevenue,
+            prevMonthRevenue,
+            revenueGrowth,
             completionRate,
             avgOrderValue,
             activeProducts,

@@ -3,13 +3,12 @@ const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const session = require('express-session')
 const passport = require('./config/passport')
+const { apiLimiter } = require('./middleware/rateLimiter')
 
 const authRoutes = require('./modules/auth/auth.routes')
 const oauthRoutes = require('./modules/auth/oauth.routes')
 const productRoutes = require('./modules/products/product.routes')
 const orderRoutes = require('./modules/orders/order.routes')
-const checkoutRoutes = require('./modules/checkout/checkout.routes')
-const paymentRoutes = require('./modules/payments/payment.routes')
 const analyticsRoutes = require('./modules/analytics/analytics.routes')
 const auctionRoutes = require('./modules/auctions/auction.routes')
 const chatRoutes = require('./modules/chat/chat.routes')
@@ -53,12 +52,14 @@ app.get('/health', (req, res) => {
 app.get("/", (req, res) => {
     res.send("Agrovista backend running");
 });
+
+// Global rate limiter — applied to every /api/* route before any handler runs
+app.use('/api', apiLimiter)
+
 app.use('/api/auth', authRoutes)
 app.use('/api/auth', oauthRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/orders', orderRoutes)
-app.use('/api/checkout', checkoutRoutes)
-app.use('/api/payments', paymentRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/auctions', auctionRoutes)
 app.use('/api/chat', chatRoutes)

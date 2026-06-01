@@ -192,6 +192,16 @@ export default function FarmerDashboard() {
   const auctions = auctionsRes?.data?.filter(a => a.farmerId === user.id) || [];
   const farmerProducts = Array.isArray(farmerProductsRes?.data) ? farmerProductsRes.data : [];
 
+  // Build a real month-over-month label from the analytics data the server computed.
+  // Possible shapes: "+18% vs last month", "-5% vs last month", "same as last month", "first month of data"
+  const growth = analytics?.summary?.revenueGrowth ?? null
+  const revenueGrowthLabel = (() => {
+    if (growth === null) return "vs last month"
+    if (growth === 0) return "same as last month"
+    if (growth === 100 && (analytics?.summary?.prevMonthRevenue ?? 0) === 0) return "first month of data"
+    return `${growth > 0 ? "+" : ""}${growth}% vs last month`
+  })()
+
   // Reviews + per-review order cross-reference
   const reviewsList = Array.isArray(reviewsRes?.data?.reviews)
     ? reviewsRes.data.reviews
@@ -258,7 +268,7 @@ export default function FarmerDashboard() {
               {
                 title: "Monthly Earnings",
                 value: `₹${(analytics?.summary?.thisMonthRevenue || 0).toLocaleString()}`,
-                desc: "+14% from last month",
+                desc: revenueGrowthLabel,
                 icon: TrendingUp,
                 color: "text-agri-green bg-agri-green/10"
               },
