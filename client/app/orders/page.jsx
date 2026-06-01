@@ -246,14 +246,16 @@ export default function OrdersPage() {
 
                       {/* Left: image + details */}
                       <div className="flex items-center gap-4 w-full sm:w-auto">
-                        <img src={order.image} alt=""
+                        <img src={order.image || (order.product?.images && order.product.images[0]) || "https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"} alt=""
                           className="w-16 h-16 object-cover rounded-2xl border border-agri-green/5 shrink-0" />
                         <div className="space-y-0.5 truncate">
                           <span className="text-[9px] font-black bg-agri-green/10 text-agri-green px-2 py-0.5 rounded-full uppercase">
                             Order #{order.id.slice(-8).toUpperCase()}
                           </span>
                           <h4 className="text-sm font-extrabold text-agri-green-dark dark:text-agri-green-light truncate">
-                            {order.productName}
+                            {order.items && order.items.length > 1
+                              ? `${order.productName} and ${order.items.length - 1} more crop${order.items.length - 1 > 1 ? 's' : ''}`
+                              : order.productName}
                           </h4>
                           <p className="text-[10px] text-agri-brown font-semibold">
                             {user.role === "FARMER" ? `Buyer: ${order.buyerName}` : `Grower: ${order.farmerName}`}
@@ -261,6 +263,18 @@ export default function OrdersPage() {
                           <p className="text-[10px] text-agri-brown">
                             Placed {new Date(order.createdAt).toLocaleDateString("en-IN")}
                           </p>
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            <span className="text-[8px] font-extrabold px-1.5 py-0.5 rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 uppercase">
+                              {order.paymentMethod || "ONLINE"}
+                            </span>
+                            <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded ${
+                              order.paymentStatus === "Paid"
+                                ? "bg-green-100/80 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-amber-100/80 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            } uppercase`}>
+                              Payment: {order.paymentStatus || "Pending"}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -269,8 +283,12 @@ export default function OrdersPage() {
                         <div>
                           <p className="text-[9px] text-agri-brown font-bold uppercase sm:text-right">Settled Amount</p>
                           <p className="text-base font-black text-agri-green">
-                            ₹{order.totalAmount.toLocaleString("en-IN")}
-                            <span className="text-[10px] text-agri-brown font-semibold ml-1">({order.quantity}kg)</span>
+                            ₹{(order.total || order.totalAmount).toLocaleString("en-IN")}
+                            <span className="text-[10px] text-agri-brown font-semibold ml-1">
+                              ({order.items && order.items.length > 0
+                                ? order.items.reduce((sum, i) => sum + i.quantity, 0)
+                                : order.quantity}{order.unit || "kg"})
+                            </span>
                           </p>
                         </div>
 

@@ -490,5 +490,32 @@ export const apiService = {
     } catch (e) {
       throw e;
     }
+  },
+
+  createCheckoutOrder: async (checkoutData) => {
+    try {
+      const res = await api.post("/checkout/create-order", checkoutData);
+      return res.data;
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  verifyPayment: async (verificationData) => {
+    try {
+      const res = await api.post("/payments/verify", verificationData);
+      return res.data;
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  createPayment: async (paymentData) => {
+    try {
+      const res = await api.post("/payments/create", paymentData);
+      return res.data;
+    } catch (e) {
+      throw e;
+    }
   }
 };

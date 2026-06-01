@@ -465,7 +465,7 @@ export default function OrderDetailContent() {
                     <h2 className="text-lg font-black text-agri-green-dark">Rate Your Experience</h2>
                   </div>
                   <p className="text-xs text-agri-brown mt-1">
-                    Your review helps other buyers and improves the farmer's trust score.
+                    Your review helps other buyers and improves the farmer&apos;s trust score.
                   </p>
                 </div>
                 <div className="p-6">
@@ -506,27 +506,105 @@ export default function OrderDetailContent() {
               </Card>
             )}
 
+            {/* Sourced Crop Items Card */}
+            <Card className="border-agri-green/5">
+              <div className="p-5 border-b border-agri-green/5 bg-gradient-to-r from-agri-green/5 to-transparent">
+                <h2 className="text-lg font-black text-agri-green-dark">Sourced Crop Items</h2>
+              </div>
+              <div className="p-6 space-y-4">
+                {order.items && order.items.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="divide-y divide-agri-green/5">
+                      {order.items.map((item, idx) => (
+                        <div key={idx} className="py-3 flex items-center justify-between text-xs sm:text-sm">
+                          <div>
+                            <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">
+                              {item.product?.name || order.productName || "Crop"}
+                            </span>
+                            <span className="text-agri-brown ml-2 font-semibold">
+                              ({item.quantity} {order.unit || "kg"} @ ₹{item.unitPrice})
+                            </span>
+                          </div>
+                          <span className="font-black text-agri-green">
+                            ₹{(item.total || item.quantity * item.unitPrice).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="h-px bg-agri-green/5" />
+                    
+                    <div className="space-y-2.5 text-xs font-semibold text-agri-brown">
+                      <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <span>₹{order.subtotal?.toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>GST / Cess (5%)</span>
+                        <span>₹{order.tax?.toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between text-sm sm:text-base font-black text-agri-green-dark dark:text-white pt-2 border-t border-dashed border-agri-green/10">
+                        <span>Total Sourced Commitment</span>
+                        <span className="text-agri-green">₹{(order.total || order.totalAmount)?.toLocaleString("en-IN")}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-xs sm:text-sm font-semibold">
+                      <span>{order.productName} ({order.quantity} {order.unit || "kg"} @ ₹{order.unitPrice || order.product?.price})</span>
+                      <span className="font-black text-agri-green">₹{order.totalAmount?.toLocaleString("en-IN")}</span>
+                    </div>
+                    <div className="flex justify-between text-xs sm:text-sm font-black border-t border-agri-green/5 pt-3">
+                      <span>Total</span>
+                      <span className="text-agri-green">₹{order.totalAmount?.toLocaleString("en-IN")}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
             {/* Logistics */}
             <Card className="border-agri-green/5">
               <div className="p-5 border-b border-agri-green/5 bg-gradient-to-r from-agri-green/5 to-transparent">
                 <h2 className="text-lg font-black text-agri-green-dark">Logistics & Escrow</h2>
               </div>
-              <div className="p-6 grid grid-cols-2 gap-6">
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <p className="text-xs text-agri-brown font-bold mb-2 uppercase">Delivery Address</p>
                   <div className="flex gap-2">
                     <MapPin className="w-4 h-4 text-agri-green shrink-0 mt-0.5" />
-                    <p className="text-sm font-semibold">{order.shippingAddress || order.deliveryAddress}</p>
+                    <p className="text-sm font-semibold">
+                      {order.shippingAddress && order.shippingAddress.street
+                        ? `${order.shippingAddress.street}, ${order.shippingAddress.city}, ${order.shippingAddress.state} - ${order.shippingAddress.pincode}`
+                        : order.deliveryAddress}
+                    </p>
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs text-agri-brown font-bold mb-2 uppercase">Escrow Amount</p>
+                  <p className="text-xs text-agri-brown font-bold mb-2 uppercase">Escrow / Gross Commitment</p>
                   <div className="flex gap-2">
                     <UserCheck className="w-4 h-4 text-agri-green shrink-0 mt-0.5" />
                     <p className="text-sm font-semibold">
-                      ₹{order.totalAmount?.toLocaleString("en-IN")}{" "}
-                      {isDelivered ? "— released to farmer." : "— locked until delivery confirmation."}
+                      ₹{(order.total || order.totalAmount)?.toLocaleString("en-IN")}{" "}
+                      {isDelivered
+                        ? "— released to grower."
+                        : order.paymentMethod === "COD"
+                        ? "— settled via COD."
+                        : "— locked until delivery confirmation."}
                     </p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-agri-brown font-bold mb-2 uppercase">Payment Details</p>
+                  <div className="space-y-1 text-sm font-semibold">
+                    <p>Method: <span className="text-agri-green">{order.paymentMethod || "ONLINE"}</span></p>
+                    <p>Status: <span className={order.paymentStatus === "Paid" ? "text-green-600 font-bold" : "text-amber-600 font-bold"}>{order.paymentStatus || "Pending"}</span></p>
+                    {order.transactionId && (
+                      <p className="text-[10px] text-agri-brown font-normal truncate max-w-[200px]" title={order.transactionId}>
+                        Ref: {order.transactionId}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

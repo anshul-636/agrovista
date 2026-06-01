@@ -12,6 +12,7 @@ import Badge from "../../../components/ui/Badge";
 import Input from "../../../components/ui/Input";
 import { apiService } from "../../../lib/api";
 import { useAuthStore } from "../../../store/authStore";
+import { useCartStore } from "../../../store/cartStore";
 import { toast } from "sonner";
 
 export default function ProductDetailPage() {
@@ -22,7 +23,7 @@ export default function ProductDetailPage() {
   const currentUserId = user?.id || user?._id || null;
   const currentUserRole = String(user?.role || "").toUpperCase();
   const [quantity, setQuantity] = useState(10);
-  const [address, setAddress] = useState("");
+  const { addItem, clearCart } = useCartStore();
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [isWatching, setIsWatching] = useState(false);
 
@@ -63,7 +64,7 @@ export default function ProductDetailPage() {
     }
   });
 
-  const handlePlaceOrder = (e) => {
+  const handleAddToCart = (e) => {
     e.preventDefault();
     if (!isAuthenticated) {
       toast.error("Please log in to purchase.");
@@ -86,16 +87,38 @@ export default function ProductDetailPage() {
       toast.error(`Only ${product.quantity} ${product.unit} available.`);
       return;
     }
-    if (!address) {
-      toast.error("Please fill in a delivery address.");
+
+    addItem(product, quantity);
+    toast.success(`${quantity} ${product.unit || "units"} of ${product.name} added to cart!`, { icon: "🛒" });
+  };
+
+  const handleBuyNow = (e) => {
+    e.preventDefault();
+    if (!isAuthenticated) {
+      toast.error("Please log in to purchase.");
+      router.push("/login");
+      return;
+    }
+    if (currentUserRole !== "BUYER") {
+      toast.error("Only buyers can purchase products.");
+      return;
+    }
+    if (isOwnProduct) {
+      toast.error("You cannot order your own product.");
+      return;
+    }
+    if (quantity <= 0) {
+      toast.error("Please specify a valid quantity.");
+      return;
+    }
+    if (quantity > product.quantity) {
+      toast.error(`Only ${product.quantity} ${product.unit} available.`);
       return;
     }
 
-    createOrderMutation.mutate({
-      productId: product.id,
-      quantity,
-      deliveryAddress: address
-    });
+    clearCart();
+    addItem(product, quantity);
+    router.push("/checkout");
   };
 
   const toggleWatchlist = () => {
@@ -294,7 +317,7 @@ export default function ProductDetailPage() {
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handlePlaceOrder} className="space-y-4">
+                <form className="space-y-4">
                 {/* Quantity Select widget */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">
@@ -324,15 +347,6 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
 
-                <Input
-                  label="Delivery Address"
-                  id="address"
-                  placeholder="Street, City, pincode"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  required
-                />
-
                 {/* Pricing Summary */}
                 <div className="space-y-2 text-xs font-semibold text-agri-brown border-t border-agri-green/5 pt-4">
                   <div className="flex justify-between">
@@ -349,15 +363,25 @@ export default function ProductDetailPage() {
                   </div>
                 </div>
 
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="w-full py-3.5 rounded-2xl flex items-center justify-center gap-2 mt-4"
-                  disabled={createOrderMutation.isLoading}
-                >
-                  <ShoppingBag className="w-4.5 h-4.5" />
-                  <span>{createOrderMutation.isLoading ? "Submitting Order..." : "Confirm Purchase"}</span>
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddToCart}
+                    className="flex-1 py-3.5 rounded-2xl flex items-center justify-center gap-2"
+                  >
+                    <span>Add to Sourcing Cart</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={handleBuyNow}
+                    className="flex-1 py-3.5 rounded-2xl flex items-center justify-center gap-2"
+                  >
+                    <ShoppingBag className="w-4.5 h-4.5" />
+                    <span>Buy It Now</span>
+                  </Button>
+                </div>
               </form>
               )}
             </Card>

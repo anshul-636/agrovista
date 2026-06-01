@@ -9,6 +9,7 @@ import { Bell, Sun, Moon, LogOut, User, Settings, ShoppingBag, Landmark, Message
 import { useAuthStore } from "../../store/authStore";
 import { useNotificationStore } from "../../store/notificationStore";
 import { getSocket } from "../../lib/socket";
+import { useCartStore } from "../../store/cartStore";
 
 export default function Header() {
   const pathname = usePathname();
@@ -18,6 +19,8 @@ export default function Header() {
   const { unreadCount, addNotification } = useNotificationStore();
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const cartItems = useCartStore((s) => s.items);
+  const cartCount = cartItems.length;
 
 
   const [mounted, setMounted] = useState(false);
@@ -153,6 +156,21 @@ export default function Header() {
               </motion.button>
             )}
 
+            {mounted && isAuthenticated && user && user.role === "BUYER" && (
+              <Link
+                href="/cart"
+                className="relative p-2.5 rounded-2xl bg-agri-green/5 dark:bg-agri-green-light/5 text-agri-green dark:text-agri-green-light hover:bg-agri-green/10 transition animate-float"
+                aria-label="Shopping Cart"
+              >
+                <ShoppingBag className="w-5 h-5" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-agri-green rounded-full text-[9px] font-black text-white flex items-center justify-center animate-pulse">
+                    {cartCount}
+                  </span>
+                )}
+              </Link>
+            )}
+
             {/* ✅ FIX: Auth UI only renders after mount to avoid isAuthenticated mismatch */}
             {mounted && (
               isAuthenticated && user ? (
@@ -245,6 +263,21 @@ export default function Header() {
               >
                 {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </motion.button>
+            )}
+
+            {mounted && isAuthenticated && user && user.role === "BUYER" && (
+              <Link
+                href="/cart"
+                className="relative p-2 rounded-xl bg-agri-green/5 text-agri-green dark:text-agri-green-light"
+                aria-label="Shopping Cart"
+              >
+                <ShoppingBag className="w-4.5 h-4.5" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-agri-green rounded-full text-[8px] font-black text-white flex items-center justify-center animate-pulse">
+                    {cartCount}
+                  </span>
+                )}
+              </Link>
             )}
 
             <button

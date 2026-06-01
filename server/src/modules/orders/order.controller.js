@@ -49,4 +49,14 @@ const cancel = asyncHandler(async (req, res) => {
     res.json(new ApiResponse(200, order, 'Order cancelled successfully'))
 })
 
-module.exports = { place, getBuyer, getFarmer, getOne, updateStatus, verifyDelivery, cancel }
+const getMyOrders = asyncHandler(async (req, res) => {
+    let orders;
+    if (req.user.role === 'FARMER') {
+        orders = await getFarmerOrders(req.user._id, req.query.status)
+    } else {
+        orders = await getBuyerOrders(req.user._id)
+    }
+    res.json(new ApiResponse(200, orders, 'Orders fetched successfully'))
+})
+
+module.exports = { place, getBuyer, getFarmer, getOne, updateStatus, verifyDelivery, cancel, getMyOrders }

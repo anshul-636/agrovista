@@ -8,7 +8,8 @@ const {
     getOne,
     updateStatus,
     verifyDelivery,
-    cancel
+    cancel,
+    getMyOrders
 } = require('./order.controller')
 
 const router = express.Router()
@@ -18,6 +19,7 @@ router.use(verifyToken)
 // IMPORTANT: specific routes before dynamic /:id routes
 router.get('/buyer', authorize('BUYER'), getBuyer)
 router.get('/farmer', authorize('FARMER'), getFarmer)
+router.get('/my-orders', getMyOrders)
 
 router.post('/', authorize('BUYER'), place)
 router.get('/:id', getOne)
