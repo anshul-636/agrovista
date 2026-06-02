@@ -105,48 +105,83 @@ function InfoRow({ icon: Icon, label, value }) {
 // ─── Farmer Verification Panel ───────────────────────────────────────────────
 function FarmerVerificationPanel({ user }) {
   const queryClient = useQueryClient();
-  const [docUrls, setDocUrls] = useState(
-    (user?.verificationDocs || []).join("\n")
-  );
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm]     = useState(false);
+  const [files, setFiles]           = useState([]);        // File[]
+  const [dragOver, setDragOver]     = useState(false);
+  const fileInputRef                = React.useRef(null);
 
   const status = user?.verificationStatus || "UNVERIFIED";
 
-  const submitMutation = useMutation({
-    mutationFn: (urls) => apiService.requestFarmerVerification(urls),
+  // ── mutation: upload files ────────────────────────────────────────────────
+  const uploadMutation = useMutation({
+    mutationFn: (selectedFiles) => apiService.uploadVerificationDocs(selectedFiles),
     onSuccess: (res) => {
       if (res?.success || res?.data) {
-        toast.success("Verification request submitted! We'll review your documents shortly.");
+        toast.success("Documents uploaded! We'll review your verification request shortly.");
         setShowForm(false);
+        setFiles([]);
         queryClient.invalidateQueries(["profileStats"]);
-        // Update auth store user
         const { updateProfile } = useAuthStore.getState();
         updateProfile({ verificationStatus: "PENDING" });
       } else {
-        toast.error(res?.error || "Failed to submit");
+        toast.error(res?.error || "Upload failed. Please try again.");
       }
     },
     onError: (err) => {
-      toast.error(err?.response?.data?.message || "Submission failed");
+      toast.error(err?.response?.data?.message || "Upload failed. Please try again.");
     },
   });
 
-  const handleSubmit = () => {
-    const urls = docUrls.split("\n").map((u) => u.trim()).filter(Boolean);
-    if (urls.length === 0) {
-      toast.error("Please enter at least one document URL");
-      return;
-    }
-    submitMutation.mutate(urls);
+  // ── helpers ───────────────────────────────────────────────────────────────
+  const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  const MAX_SIZE_MB    = 5;
+
+  const addFiles = (incoming) => {
+    const valid = Array.from(incoming).filter((f) => {
+      if (!ACCEPTED_TYPES.includes(f.type)) {
+        toast.error(`${f.name}: unsupported type. Use JPG, PNG, WEBP, or PDF.`);
+        return false;
+      }
+      if (f.size > MAX_SIZE_MB * 1024 * 1024) {
+        toast.error(`${f.name}: exceeds ${MAX_SIZE_MB} MB limit.`);
+        return false;
+      }
+      return true;
+    });
+    setFiles((prev) => {
+      const names = new Set(prev.map((p) => p.name));
+      const fresh = valid.filter((v) => !names.has(v.name));
+      return [...prev, ...fresh].slice(0, 5);     // max 5 docs
+    });
   };
 
+  const removeFile = (idx) => setFiles((prev) => prev.filter((_, i) => i !== idx));
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const handleSubmit = () => {
+    if (files.length === 0) {
+      toast.error("Please select at least one document to upload.");
+      return;
+    }
+    uploadMutation.mutate(files);
+  };
+
+  const fileIcon = (f) =>
+    f.type === "application/pdf" ? "📄" : "🖼️";
+
+  // ── status config ─────────────────────────────────────────────────────────
   const statusConfig = {
     UNVERIFIED: {
       icon: ShieldCheck,
       color: "text-gray-400",
       bg: "bg-gray-100 dark:bg-zinc-800",
       label: "Not Verified",
-      desc: "Submit your documents to become a verified farmer and unlock the trust badge.",
+      desc: "Upload your documents to become a verified farmer and unlock the trust badge.",
       badgeVariant: "outline",
     },
     PENDING: {
@@ -179,9 +214,9 @@ function FarmerVerificationPanel({ user }) {
     },
   };
 
-  const cfg = statusConfig[status] || statusConfig.UNVERIFIED;
+  const cfg       = statusConfig[status] || statusConfig.UNVERIFIED;
   const StatusIcon = cfg.icon;
-  const canSubmit = status === "UNVERIFIED" || status === "REJECTED";
+  const canSubmit  = status === "UNVERIFIED" || status === "REJECTED";
 
   return (
     <Card className="border-agri-green/5 p-5 space-y-4">
@@ -218,7 +253,7 @@ function FarmerVerificationPanel({ user }) {
         </div>
       )}
 
-      {/* Submit / Re-submit form */}
+      {/* ── Upload form ── */}
       {canSubmit && (
         <div className="space-y-3">
           {!showForm ? (
@@ -235,31 +270,95 @@ function FarmerVerificationPanel({ user }) {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="space-y-3"
+                className="space-y-3 overflow-hidden"
               >
+                {/* Accepted doc types hint */}
                 <p className="text-[10px] text-agri-brown leading-relaxed">
-                  Paste one URL per line. Accepted documents: <span className="font-bold">Aadhaar card</span>, <span className="font-bold">land records (Khasra/Khatauni)</span>, <span className="font-bold">GST certificate</span>, or <span className="font-bold">PM-KISAN registration</span>. Upload to Google Drive or Cloudinary and paste the shareable link.
+                  Upload up to <span className="font-bold">5 files</span> (JPG, PNG, WEBP, PDF · max 5 MB each).
+                  Accepted: <span className="font-bold">Aadhaar card</span>,{" "}
+                  <span className="font-bold">land records (Khasra/Khatauni)</span>,{" "}
+                  <span className="font-bold">GST certificate</span>, or{" "}
+                  <span className="font-bold">PM-KISAN registration</span>.
                 </p>
-                <textarea
-                  rows={4}
-                  value={docUrls}
-                  onChange={(e) => setDocUrls(e.target.value)}
-                  placeholder={"https://drive.google.com/...\nhttps://drive.google.com/..."}
-                  className="w-full px-4 py-3 rounded-xl border text-xs bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20 resize-none font-mono"
+
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.webp,.pdf"
+                  className="hidden"
+                  onChange={(e) => addFiles(e.target.files)}
                 />
+
+                {/* Drag-and-drop zone */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`cursor-pointer rounded-xl border-2 border-dashed transition-all px-4 py-6 flex flex-col items-center gap-2 ${
+                    dragOver
+                      ? "border-agri-green bg-agri-green/5"
+                      : "border-agri-green/20 hover:border-agri-green/40 hover:bg-agri-green/5"
+                  }`}
+                >
+                  <Upload className={`w-6 h-6 ${dragOver ? "text-agri-green" : "text-agri-green/40"}`} />
+                  <p className="text-xs font-bold text-agri-green">
+                    {dragOver ? "Drop files here" : "Click to browse or drag & drop"}
+                  </p>
+                  <p className="text-[10px] text-agri-brown">JPG, PNG, WEBP, PDF — up to 5 MB each</p>
+                </div>
+
+                {/* File preview list */}
+                {files.length > 0 && (
+                  <div className="space-y-2">
+                    {files.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-2 bg-agri-green/5 rounded-xl border border-agri-green/10">
+                        <span className="text-base">{fileIcon(f)}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold text-agri-green-dark dark:text-gray-200 truncate">{f.name}</p>
+                          <p className="text-[9px] text-agri-brown">{(f.size / 1024).toFixed(0)} KB</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(i)}
+                          className="flex-shrink-0 text-red-400 hover:text-red-600 transition"
+                          aria-label="Remove file"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action buttons */}
                 <div className="flex gap-2">
                   <Button
                     variant="primary"
                     onClick={handleSubmit}
-                    disabled={submitMutation.isPending}
+                    disabled={uploadMutation.isPending || files.length === 0}
                     className="flex-1 py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
                   >
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    {submitMutation.isPending ? "Submitting…" : "Submit for Review"}
+                    {uploadMutation.isPending ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                        </svg>
+                        Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Upload & Submit ({files.length} file{files.length !== 1 ? "s" : ""})
+                      </>
+                    )}
                   </Button>
                   <Button
                     variant="secondary"
-                    onClick={() => setShowForm(false)}
+                    onClick={() => { setShowForm(false); setFiles([]); }}
                     className="py-2 px-4 text-xs rounded-xl border-agri-green/15"
                   >
                     Cancel

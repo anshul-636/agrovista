@@ -527,10 +527,25 @@ export const apiService = {
   },
 
   // ── Farmer Verification ──────────────────────────────────────────────────
-  // Farmer submits doc URLs for admin review
+  // Farmer submits doc URLs for admin review (kept for backwards compat)
   requestFarmerVerification: async (docUrls) => {
     try {
       const res = await api.post("/users/me/verification-request", { docUrls });
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
+    }
+  },
+
+  // Farmer uploads document files directly (multipart/form-data)
+  uploadVerificationDocs: async (files) => {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("docs", file));
+      const res = await api.post("/users/me/verification-upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       const payload = unwrapData(res);
       return { success: true, data: payload };
     } catch (e) {

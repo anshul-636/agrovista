@@ -6,10 +6,12 @@ const {
     updateProfile,
     updateRole,
     submitVerificationRequest,
+    uploadVerificationDocs,
     listPendingVerifications,
     processVerification
 } = require('./user.controller')
 const { verifyToken } = require('../../middleware/auth')
+const { upload } = require('../../config/cloudinary')
 
 const router = express.Router()
 
@@ -22,9 +24,13 @@ router.get('/:id/reviews', getUserReviews)
 router.patch('/me', verifyToken, updateProfile)
 router.put('/me/role', verifyToken, updateRole)
 
-// Farmer submits verification request
+// Farmer submits verification request (URL-based, kept for backwards compat)
 // POST /api/users/me/verification-request  { docUrls: [...] }
 router.post('/me/verification-request', verifyToken, submitVerificationRequest)
+
+// Farmer uploads verification docs directly (multipart/form-data, up to 5 files)
+// POST /api/users/me/verification-upload
+router.post('/me/verification-upload', verifyToken, upload.array('docs', 5), uploadVerificationDocs)
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 // These routes are protected by the service layer (admin email check),

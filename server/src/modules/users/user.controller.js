@@ -4,6 +4,7 @@ const ApiError = require('../../utils/ApiError')
 const User = require('../../models/User')
 const { getPublicProfile, getPublicStats, requestVerification, reviewVerification, getPendingVerifications } = require('./user.service')
 const { getFarmerReviews } = require('../reviews/review.service')
+const { uploadFiles } = require('../../config/cloudinary')
 
 const getProfile = asyncHandler(async (req, res) => {
     const profile = await getPublicProfile(req.params.id)
@@ -122,6 +123,27 @@ const processVerification = asyncHandler(async (req, res) => {
     res.json(new ApiResponse(200, result, `Verification ${action === 'APPROVE' ? 'approved' : 'rejected'} successfully`))
 })
 
+// POST /api/users/me/verification-upload  (multipart/form-data, field: "docs")
+// Uploads files to Cloudinary and immediately submits a verification request.
+const uploadVerificationDocs = asyncHandler(async (req, res) => {
+    if (!req.files || req.files.length === 0) {
+        throw new ApiError(400, 'Please upload at least one document file')
+    }
+    if (req.user.role !== 'FARMER') {
+        throw new ApiError(403, 'Only farmers can request verification')
+    }
+    if (req.user.verificationStatus === 'VERIFIED') {
+        throw new ApiError(400, 'Your account is already verified')
+    }
+
+    // Upload all files to Cloudinary under the verificationDocs folder
+    const docUrls = await uploadFiles(req.files, 'agrovista/verification-docs')
+
+    // Reuse the existing service to set status → PENDING and store the URLs
+    const result = await requestVerification(req.user._id, docUrls)
+    res.json(new ApiResponse(200, result, 'Verification documents uploaded and request submitted'))
+})
+
 module.exports = {
     getProfile,
     getUserReviews,
@@ -129,6 +151,7 @@ module.exports = {
     updateProfile,
     updateRole,
     submitVerificationRequest,
+    uploadVerificationDocs,
     listPendingVerifications,
     processVerification
 }
