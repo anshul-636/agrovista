@@ -4,7 +4,10 @@ import React, { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Landmark, Clock, Users, ArrowLeft, Send, Sparkles, Trophy, AlertTriangle, ShieldCheck, TimerReset } from "lucide-react";
+import {
+  Landmark, Clock, Users, ArrowLeft, Send, Trophy, AlertTriangle,
+  ShieldCheck, TimerReset, BadgeCheck, Zap, TrendingUp, Lock
+} from "lucide-react";
 import Header from "../../../components/shared/Header";
 import Button from "../../../components/ui/Button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../../components/ui/Card";
@@ -20,17 +23,43 @@ const getAuctionPhase = (auction) => {
   const now = new Date();
   const startTime = new Date(auction.startTime);
   const endTime = new Date(auction.endTime);
-
-  if (auction.status === "ENDED" || auction.status === "CLOSED" || now >= endTime) {
-    return "past";
-  }
-
-  if (auction.status === "LIVE" || (now >= startTime && now < endTime)) {
-    return "live";
-  }
-
+  if (auction.status === "ENDED" || auction.status === "CLOSED" || now >= endTime) return "past";
+  if (auction.status === "LIVE" || (now >= startTime && now < endTime)) return "live";
   return "upcoming";
 };
+
+// ── Verified badge chip ────────────────────────────────────────────────────────
+function VerifiedChip() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-agri-green/10 text-agri-green border border-agri-green/20">
+      <BadgeCheck className="w-3 h-3" /> Verified
+    </span>
+  );
+}
+
+// ── Reserve status banner ──────────────────────────────────────────────────────
+function ReserveBanner({ auction, currentBid }) {
+  if (!auction?.reservePrice) return null;
+  const met = currentBid >= auction.reservePrice || auction.reserveMet;
+  return (
+    <motion.div
+      key={met ? "met" : "unmet"}
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold ${
+        met
+          ? "bg-agri-green/10 text-agri-green border border-agri-green/20"
+          : "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+      }`}
+    >
+      {met ? (
+        <><ShieldCheck className="w-4 h-4" /> Reserve price met — lot will be sold to highest bidder</>
+      ) : (
+        <><Lock className="w-4 h-4" /> Reserve not yet met — lot won't sell below ₹{auction.reservePrice?.toLocaleString("en-IN")}</>
+      )}
+    </motion.div>
+  );
+}
 
 export default function AuctionRoomPage() {
   const { id } = useParams();
@@ -39,21 +68,19 @@ export default function AuctionRoomPage() {
   const { user, isAuthenticated } = useAuthStore();
 
   const [currentBid, setCurrentBid] = useState(0);
+  const [reserveMet, setReserveMet] = useState(false);
   const [bidsList, setBidsList] = useState([]);
   const [timeLeft, setTimeLeft] = useState({ diff: 0, text: "" });
   const [bidAmount, setBidAmount] = useState("");
   const [participantsCount, setParticipantsCount] = useState(0);
   const [isExpired, setIsExpired] = useState(false);
   const [winner, setWinner] = useState(null);
+  const [buyNowActive, setBuyNowActive] = useState(false);
   const isExpiredRef = useRef(isExpired);
-  
   const socketRef = useRef(null);
 
-  useEffect(() => {
-    isExpiredRef.current = isExpired;
-  }, [isExpired]);
+  useEffect(() => { isExpiredRef.current = isExpired; }, [isExpired]);
 
-  // Fetch auction details
   const { data: auctionRes, isLoading } = useQuery({
     queryKey: ["auction", id],
     queryFn: () => apiService.getAuctionById(id),
@@ -63,91 +90,93 @@ export default function AuctionRoomPage() {
   const auctionPhase = React.useMemo(() => getAuctionPhase(auction), [auction]);
   const canBid = auctionPhase === "live";
 
-  // Initialize initial state once loaded
   useEffect(() => {
     if (auction) {
       setCurrentBid(auction.currentBid ?? auction.startingPrice ?? 0);
       setBidsList(auction.bids || []);
       setIsExpired(auctionPhase === "past");
+      setReserveMet(auction.reserveMet || false);
+      setBuyNowActive(!!auction.buyNowPrice);
     }
   }, [auction, auctionPhase]);
 
-  // Socket connection + Realtime bindings
+  // ── Socket bindings ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!id || !canBid) return;
-
     const socket = getSocket();
     if (!socket) return;
     socketRef.current = socket;
-
     socket.emit("join:auction", { auctionId: id });
 
     const handleNewBid = (data) => {
-      console.log("[Room] Received bid event:", data);
       if (data.auctionId !== id) return;
-      if (isExpiredRef.current) {
-        console.log("Auction is mathematically closed. Rejecting streaming bid.");
-        return;
-      }
+      if (isExpiredRef.current) return;
 
-      // Handle realtime bid payloads from the backend socket
-      let actualAmount = data.amount;
-      if (typeof data.amount === "number" && data.amount < 10) {
-        // Some backends may emit incremental bids instead of absolute totals
-        actualAmount = currentBid + data.amount;
-      }
+      const actualAmount = typeof data.amount === "number" && data.amount < 10
+        ? currentBid + data.amount
+        : data.amount;
 
       setCurrentBid(actualAmount);
-      
-      // Normalize bidder payloads from the backend.
-      const bidderString = typeof data.bidder === 'object' && data.bidder !== null 
-        ? data.bidder.name 
+      if (data.reserveMet) setReserveMet(true);
+
+      const bidderString = typeof data.bidder === "object" && data.bidder !== null
+        ? data.bidder.name
         : (data.bidder || "Unknown Bidder");
 
-      const newBidEntry = {
+      setBidsList(prev => [{
         bidderName: bidderString,
         amount: actualAmount,
         isUser: !!data.isUser,
         timestamp: data.timestamp || new Date().toISOString()
-      };
+      }, ...prev]);
 
-      setBidsList(prev => [newBidEntry, ...prev]);
-
-      // Spark screen indicator
-      toast.info(`New bid placed by ${bidderString}: ₹${actualAmount}/kg`, { icon: "📈" });
+      toast.info(`New bid: ₹${actualAmount}/kg by ${bidderString}`, { icon: "📈" });
     };
 
-    socket.on("bid:new", handleNewBid);
-    // Listen for participant updates from server
-    const handleParticipants = (data) => {
-      if (!data) return;
+    // Buy-Now or natural expiry ended the auction
+    const handleAuctionEnded = (data) => {
       if (data.auctionId !== id) return;
+      setIsExpired(true);
+      setTimeLeft({ diff: 0, text: "Ended" });
+      if (data.reason === "BUY_NOW") {
+        toast.success(`Auction closed — sold via Buy Now to ${data.winner?.name || "a buyer"}!`, { duration: 8000, icon: "⚡" });
+      }
+      const winnerName = typeof data.winner === "object" ? data.winner?.name : data.winner;
+      if (winnerName) setWinner(winnerName);
+      queryClient.invalidateQueries(["auction", id]);
+    };
+
+    const handleParticipants = (data) => {
+      if (data?.auctionId !== id) return;
       setParticipantsCount(data.count || 0);
-    }
-    socket.on('auction:participants', handleParticipants);
+    };
 
     const handleDeleted = (data) => {
       if (!data || data.auctionId !== id) return;
       toast.error("This auction was deleted by the seller.");
       router.push("/auctions");
     };
-    socket.on('auction:deleted', handleDeleted);
+
+    socket.on("bid:new", handleNewBid);
+    socket.on("auction:ended", handleAuctionEnded);
+    socket.on("auction:participants", handleParticipants);
+    socket.on("auction:deleted", handleDeleted);
 
     return () => {
       socket.off("bid:new", handleNewBid);
-      socket.off('auction:participants', handleParticipants);
-      socket.off('auction:deleted', handleDeleted);
+      socket.off("auction:ended", handleAuctionEnded);
+      socket.off("auction:participants", handleParticipants);
+      socket.off("auction:deleted", handleDeleted);
     };
-  }, [id, currentBid, canBid, router]);
+  }, [id, currentBid, canBid, router, queryClient]);
 
-  // Countdown timer calculations
+  // ── Countdown ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!auction) return;
-
     const updateTimer = () => {
       const now = new Date();
       const startDiff = new Date(auction.startTime) - now;
-      const endDiff = new Date(auction.endTime) - now;
+      const endDiff   = new Date(auction.endTime) - now;
 
       if (auctionPhase === "upcoming") {
         setTimeLeft({ diff: Math.max(startDiff, 0), text: startDiff > 0 ? `Starts in ${Math.max(Math.floor(startDiff / 60000), 0)}m ${Math.max(Math.floor((startDiff / 1000) % 60), 0)}s` : "Starting soon" });
@@ -158,23 +187,12 @@ export default function AuctionRoomPage() {
         if (!isExpiredRef.current) {
           setTimeLeft({ diff: 0, text: "Ended" });
           setIsExpired(true);
-          
-          if (socketRef.current) {
-            socketRef.current.emit("leave:auction", { auctionId: id });
-          }
-          
-          // Find winner (highest bidder)
+          socketRef.current?.emit("leave:auction", { auctionId: id });
           if (bidsList.length > 0) {
             const highBid = bidsList[0];
             setWinner(highBid.bidderName);
-
-            // Trigger Confetti if user wins
-            if (highBid.isUser || highBid.bidderName.includes("You")) {
-              confetti({
-                particleCount: 150,
-                spread: 80,
-                origin: { y: 0.6 }
-              });
+            if (highBid.isUser || highBid.bidderName?.includes("You")) {
+              confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
               toast.success("Congratulations! You won this crop lot!", { duration: 8000, icon: "🏆" });
             }
           } else {
@@ -186,85 +204,73 @@ export default function AuctionRoomPage() {
 
       const minutes = Math.floor((endDiff / 1000 / 60) % 60);
       const seconds = Math.floor((endDiff / 1000) % 60);
-      
-      let text = `${minutes}m ${seconds}s`;
-      setTimeLeft({ diff: endDiff, text });
+      setTimeLeft({ diff: endDiff, text: `${minutes}m ${seconds}s` });
     };
-
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [auction, bidsList, auctionPhase]);
+  }, [auction, bidsList, auctionPhase, id]);
 
-  // Place Bid action (HTTP Mapped)
+  // ── Place Bid mutation ───────────────────────────────────────────────────────
   const placeBidMutation = useMutation({
     mutationFn: (amount) => apiService.placeBid(id, amount),
     onSuccess: (res) => {
       if (!res.success) {
         toast.error(res.error || "Failed to place bid.");
       } else {
-        // Socket push will automatically handle state updates
         setBidAmount("");
+        // Handle buy-now instant win returned from server
+        if (res.data?.isBuyNow) {
+          setIsExpired(true);
+          setBuyNowActive(false);
+          confetti({ particleCount: 200, spread: 90, origin: { y: 0.5 } });
+          toast.success("⚡ You triggered Buy Now — you won this lot!", { duration: 8000 });
+          queryClient.invalidateQueries(["auction", id]);
+        }
+        if (res.data?.reserveMet) setReserveMet(true);
       }
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || "Failed to place bid.");
     }
   });
 
+  // ── Validation helpers ───────────────────────────────────────────────────────
+  const minIncrement = auction?.minBidIncrement || 1;
+  const minAllowed = (auction?.currentBid ?? auction?.startingPrice ?? 0) + minIncrement;
+
+  const validateBid = (val) => {
+    if (!canBid) { toast.error(auctionPhase === "upcoming" ? "Auction hasn't started." : "Auction has ended."); return false; }
+    if (!isAuthenticated) { toast.error("Please sign in to bid."); router.push("/login"); return false; }
+    if (user.role !== "BUYER") { toast.error("Only buyers can place bids."); return false; }
+    if (!val || isNaN(val) || val <= 0) { toast.error("Enter a valid bid amount."); return false; }
+    if (val < minAllowed) { toast.error(`Minimum bid is ₹${minAllowed} (increment: ₹${minIncrement})`); return false; }
+    if (val > (user?.walletBalance || 1000000)) { toast.error(`Exceeds your purse of ₹${(user?.walletBalance || 1000000).toLocaleString()}`); return false; }
+    return true;
+  };
+
   const handleBidSubmit = (e) => {
     if (e) e.preventDefault();
-    if (!canBid) {
-      toast.error(auctionPhase === "upcoming" ? "This auction has not started yet." : "This auction has already ended.");
-      return;
-    }
-    if (!isAuthenticated) {
-      toast.error("Please sign in to bid.");
-      router.push("/login");
-      return;
-    }
-    if (user.role !== "BUYER") {
-      toast.error("Only buyers can bid on auctions.");
-      return;
-    }
     const val = Number(bidAmount);
-    if (!val || isNaN(val)) {
-      toast.error("Please enter a valid amount.");
-      return;
-    }
-    const minAllowed = (auction?.currentBid ?? auction?.startingPrice ?? 0) + 1;
-    if (val < minAllowed) {
-      toast.error(`Bid must be at least ₹${minAllowed}/kg.`);
-      return;
-    }
-    if (val > (user?.walletBalance || 1000000)) {
-      toast.error(`Limit Exceeded! Your maximum purse is ₹${(user?.walletBalance || 1000000).toLocaleString()}`);
-      return;
-    }
-
-    placeBidMutation.mutate(val);
+    if (validateBid(val)) placeBidMutation.mutate(val);
   };
 
   const handleQuickIncrement = (inc) => {
-    if (!canBid) {
-      toast.error(auctionPhase === "upcoming" ? "This auction has not started yet." : "This auction has already ended.");
-      return;
-    }
     const nextVal = (currentBid ?? auction?.startingPrice ?? 0) + inc;
-    if (!isAuthenticated) {
-      toast.error("Please sign in to bid.");
-      router.push("/login");
-      return;
-    }
-    if (user.role !== "BUYER") {
-      toast.error("Only buyers can bid on auctions.");
-      return;
-    }
-    if (nextVal > (user?.walletBalance || 1000000)) {
-      toast.error(`Limit Exceeded! Your maximum purse is ₹${(user?.walletBalance || 1000000).toLocaleString()}`);
-      return;
-    }
-    
-    placeBidMutation.mutate(nextVal);
+    if (validateBid(nextVal)) placeBidMutation.mutate(nextVal);
   };
 
+  const handleBuyNow = () => {
+    if (!auction?.buyNowPrice) return;
+    if (!isAuthenticated) { toast.error("Please sign in."); router.push("/login"); return; }
+    if (user.role !== "BUYER") { toast.error("Only buyers can use Buy Now."); return; }
+    if (auction.buyNowPrice > (user?.walletBalance || 1000000)) {
+      toast.error(`Buy-Now price ₹${auction.buyNowPrice} exceeds your purse.`); return;
+    }
+    placeBidMutation.mutate(auction.buyNowPrice);
+  };
+
+  // ── Loading / empty states ───────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col">
@@ -272,8 +278,8 @@ export default function AuctionRoomPage() {
         <div className="max-w-7xl mx-auto p-8 w-full animate-pulse space-y-6">
           <div className="h-6 w-24 bg-gray-200 dark:bg-zinc-800 rounded" />
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-8 h-96 bg-gray-200 dark:bg-zinc-800 rounded-3xl" />
-            <div className="lg:col-span-4 h-96 bg-gray-200 dark:bg-zinc-800 rounded-3xl" />
+            <div className="lg:col-span-7 h-96 bg-gray-200 dark:bg-zinc-800 rounded-3xl" />
+            <div className="lg:col-span-5 h-96 bg-gray-200 dark:bg-zinc-800 rounded-3xl" />
           </div>
         </div>
       </div>
@@ -292,14 +298,15 @@ export default function AuctionRoomPage() {
     );
   }
 
-  const urgencyFlash = timeLeft.diff > 0 && timeLeft.diff < 1000 * 60; // less than 1 min
+  const urgencyFlash = timeLeft.diff > 0 && timeLeft.diff < 1000 * 60;
 
   return (
     <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 text-current transition-colors pb-20">
       <Header />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
-        {/* Navigation back */}
+
+        {/* ── Back nav ── */}
         <button
           onClick={() => router.push("/auctions")}
           className="inline-flex items-center gap-1.5 text-xs font-bold text-agri-brown hover:text-agri-green transition"
@@ -307,40 +314,42 @@ export default function AuctionRoomPage() {
           <ArrowLeft className="w-4 h-4" /> Exit Arena Bidding
         </button>
 
-        {/* Header summary */}
+        {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-agri-green/5 pb-6">
           <div>
             <span className="text-[10px] font-black uppercase text-agri-green flex items-center gap-1.5">
-              <Landmark className="w-4 h-4" /> {auctionPhase === "live" ? "Live bidding Arena" : auctionPhase === "upcoming" ? "Upcoming Bidding" : "Auction Results"}
+              <Landmark className="w-4 h-4" />
+              {auctionPhase === "live" ? "Live Bidding Arena" : auctionPhase === "upcoming" ? "Upcoming Auction" : "Auction Results"}
             </span>
             <h1 className="text-2xl sm:text-3xl font-black text-agri-green-dark dark:text-agri-green-light mt-1">
               {auction.productName}
             </h1>
-            <p className="text-xs text-agri-brown mt-1">
-              Seller: {auction.farmerName} • Location: {auction.farmerLocation}
+            <p className="text-xs text-agri-brown mt-1 flex items-center gap-2 flex-wrap">
+              <span>Seller: {auction.farmerName}</span>
+              {auction.farmerVerified && <VerifiedChip />}
+              <span>• {auction.farmerLocation}</span>
             </p>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Live Count Indicator */}
             <div className="px-3.5 py-2 rounded-2xl bg-white dark:bg-black/20 border border-agri-green/10 flex items-center gap-2 text-xs font-bold text-agri-green">
               <Users className="w-4 h-4 animate-bounce" />
-              <span>{auctionPhase === "live" ? `${participantsCount} watching` : auctionPhase === "upcoming" ? "Not open yet" : "Closed"}</span>
+              <span>
+                {auctionPhase === "live" ? `${participantsCount} watching` : auctionPhase === "upcoming" ? "Not open yet" : "Closed"}
+              </span>
             </div>
-            
-            {/* Countdown Badge */}
             <div className={`px-4 py-2 rounded-2xl border flex items-center gap-2 text-xs font-extrabold shadow ${
               urgencyFlash
                 ? "bg-red-500/10 border-red-500 text-red-500 animate-pulse"
                 : "bg-white dark:bg-black/20 border-agri-green/10 text-current"
             }`}>
-              <Clock className="w-4.5 h-4.5" />
+              <Clock className="w-4 h-4" />
               <span>{timeLeft.text}</span>
             </div>
           </div>
         </div>
 
-        {/* Winner overlay block */}
+        {/* ── Winner overlay ── */}
         {isExpired && winner && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -348,23 +357,34 @@ export default function AuctionRoomPage() {
             className="p-6 bg-gradient-to-r from-agri-green-dark to-[#092B0F] border border-agri-green/20 rounded-3xl text-center text-white space-y-3 shadow-xl"
           >
             <Trophy className="w-12 h-12 text-agri-wheat mx-auto animate-bounce" />
-            <h2 className="text-2xl font-black tracking-tight">Auction Closed!</h2>
+            <h2 className="text-2xl font-black">Auction Closed!</h2>
             <p className="text-sm font-semibold">
               Winning Bidder: <span className="text-agri-wheat font-black uppercase">{winner}</span>
             </p>
-            <p className="text-xs text-white/60">Final price settled at ₹{currentBid}/kg lot value.</p>
+            <p className="text-xs text-white/60">
+              Final price: ₹{currentBid}/kg
+              {auction.reservePrice && !reserveMet && (
+                <span className="ml-2 text-amber-400">(Reserve not met — lot may not transfer)</span>
+              )}
+            </p>
           </motion.div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Live Bidding Actions */}
-          <div className="lg:col-span-7 space-y-6">
+
+          {/* ── LEFT: Bidding ── */}
+          <div className="lg:col-span-7 space-y-4">
+
+            {/* Reserve status banner */}
+            {canBid && auction.reservePrice && (
+              <ReserveBanner auction={{ ...auction, reserveMet }} currentBid={currentBid} />
+            )}
+
             <Card className="border-agri-green/5 p-6 sm:p-8 space-y-8 relative overflow-hidden">
-              {/* Glow grid background */}
               <div className="absolute inset-0 bg-gradient-to-br from-agri-green/5 to-transparent pointer-events-none -z-10" />
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                {/* High Bid Display */}
+                {/* Current bid display */}
                 <div className="text-center sm:text-left space-y-2">
                   <span className="text-[10px] text-agri-brown font-extrabold uppercase tracking-wide">Current Highest Bid</span>
                   <motion.p
@@ -378,14 +398,20 @@ export default function AuctionRoomPage() {
                   </motion.p>
                 </div>
 
-                {/* Starting price / Lot specifications */}
+                {/* Lot specs */}
                 <div className="text-center sm:text-right text-xs space-y-1 text-agri-brown font-semibold">
-                  <div>Starting Bid: <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">₹{auction.startingPrice}/kg</span></div>
+                  <div>Starting: <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">₹{auction.startingPrice}/kg</span></div>
+                  {auction.reservePrice && (
+                    <div>Reserve: <span className={`font-extrabold ${reserveMet ? "text-agri-green" : "text-amber-600"}`}>
+                      {reserveMet ? "✓ Met" : `₹${auction.reservePrice}`}
+                    </span></div>
+                  )}
                   <div>Lot Size: <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">{auction.lotSize} {auction.unit}</span></div>
-                  
+                  <div>Min Increment: <span className="font-extrabold text-agri-green-dark dark:text-agri-green-light">₹{minIncrement}</span></div>
+
                   {user?.role === "BUYER" && (
-                    <div className="mt-4 pt-1 mb-2 border-t border-agri-green/10">
-                      <span className="uppercase text-[9px] tracking-widest text-agri-green-dark font-extrabold block">Bidding Purse Available</span>
+                    <div className="mt-3 pt-2 border-t border-agri-green/10">
+                      <span className="uppercase text-[9px] tracking-widest text-agri-green-dark font-extrabold block">Bidding Purse</span>
                       <span className="font-black text-agri-green text-lg">₹{(user?.walletBalance || 1000000).toLocaleString()}</span>
                     </div>
                   )}
@@ -396,18 +422,49 @@ export default function AuctionRoomPage() {
                 </div>
               </div>
 
-              {/* Form / Increment Buttons */}
+              {/* Bidding controls */}
               {canBid ? (
-                <div className="space-y-6">
-                  {/* Quick increment buttons */}
+                <div className="space-y-5">
+
+                  {/* Buy-Now button */}
+                  {buyNowActive && auction.buyNowPrice && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/10 border border-amber-300 dark:border-amber-700 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                            <Zap className="w-4 h-4" /> Buy Now Available
+                          </p>
+                          <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">Skip the bidding — win instantly at this price</p>
+                        </div>
+                        <span className="text-2xl font-black text-amber-700 dark:text-amber-300">₹{auction.buyNowPrice}</span>
+                      </div>
+                      <button
+                        onClick={handleBuyNow}
+                        disabled={placeBidMutation.isPending}
+                        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-sm transition shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        <Zap className="w-4 h-4" />
+                        {placeBidMutation.isPending ? "Processing…" : `Buy Now — ₹${auction.buyNowPrice}/kg`}
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {/* Quick increments — use minBidIncrement as base */}
                   <div className="space-y-2">
-                    <span className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">Quick Bidding Increments</span>
+                    <span className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">
+                      Quick Bid Increments <span className="text-agri-brown font-normal">(min +₹{minIncrement})</span>
+                    </span>
                     <div className="grid grid-cols-3 gap-3">
-                      {[2, 5, 10].map((inc) => (
+                      {[minIncrement, minIncrement * 5, minIncrement * 10].map((inc) => (
                         <button
                           key={inc}
                           onClick={() => handleQuickIncrement(inc)}
-                          className="py-3 px-4 rounded-2xl border border-agri-green/10 bg-agri-green/5 text-agri-green font-black text-sm hover:bg-agri-green/10 transition shadow-sm"
+                          disabled={placeBidMutation.isPending}
+                          className="py-3 px-4 rounded-2xl border border-agri-green/10 bg-agri-green/5 text-agri-green font-black text-sm hover:bg-agri-green/10 transition shadow-sm disabled:opacity-50"
                         >
                           + ₹{inc}
                         </button>
@@ -415,12 +472,13 @@ export default function AuctionRoomPage() {
                     </div>
                   </div>
 
-                  <form onSubmit={handleBidSubmit} className="space-y-4">
+                  {/* Manual bid input */}
+                  <form onSubmit={handleBidSubmit} className="space-y-2">
                     <div className="flex gap-3">
                       <div className="flex-1">
-                          <input
-                            type="number"
-                            placeholder={`Enter bid value (min: ₹${(auction?.currentBid ?? auction?.startingPrice ?? 0) + 1})`}
+                        <input
+                          type="number"
+                          placeholder={`Min: ₹${minAllowed}`}
                           value={bidAmount}
                           onChange={(e) => setBidAmount(e.target.value)}
                           className="w-full px-4 py-3 rounded-2xl border text-sm bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20 focus:border-agri-green font-bold"
@@ -429,11 +487,16 @@ export default function AuctionRoomPage() {
                       <Button
                         type="submit"
                         variant="primary"
+                        disabled={placeBidMutation.isPending}
                         className="px-6 rounded-2xl flex items-center justify-center gap-1.5"
                       >
-                        <Send className="w-4 h-4" /> Place Bid
+                        <Send className="w-4 h-4" />
+                        {placeBidMutation.isPending ? "…" : "Bid"}
                       </Button>
                     </div>
+                    <p className="text-[10px] text-agri-brown font-semibold pl-1">
+                      Next valid bid: ₹{minAllowed}/kg or higher
+                    </p>
                   </form>
                 </div>
               ) : (
@@ -444,34 +507,57 @@ export default function AuctionRoomPage() {
                   </div>
                   <p className="text-xs text-agri-brown font-semibold leading-relaxed">
                     {auctionPhase === "upcoming"
-                      ? "This auction is scheduled but not open for bidding yet. Come back when it starts."
-                      : `This auction has finished. The final price is ₹${currentBid}/kg and the winner is shown above.`}
+                      ? "This auction is scheduled but not yet open. Come back when it starts."
+                      : `Auction finished. Final price: ₹${currentBid}/kg.`}
                   </p>
                 </div>
               )}
             </Card>
 
-            {/* General instructions */}
+            {/* Disclaimer */}
             <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
               <p className="text-[11px] text-agri-brown dark:text-gray-300 leading-relaxed font-semibold">
-                By bidding, you contractually agree to accept delivery parameters and arrange prompt transport upon winning. Retracting active bids triggers Trust Score penalties.
+                By bidding, you contractually agree to accept delivery and arrange prompt transport upon winning.
+                Retracting active bids triggers Trust Score penalties.
               </p>
             </div>
+
+            {/* Auction info strip */}
+            <Card className="border-agri-green/5 p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                {[
+                  { label: "Category",    value: auction.category },
+                  { label: "Quantity",    value: `${auction.lotSize} ${auction.unit}` },
+                  { label: "Min Increment", value: `₹${minIncrement}` },
+                  { label: "Reserve",     value: auction.reservePrice ? `₹${auction.reservePrice}` : "No reserve" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="space-y-0.5">
+                    <p className="text-[9px] font-black uppercase text-agri-brown">{label}</p>
+                    <p className="font-extrabold text-agri-green-dark dark:text-agri-green-light">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
           </div>
 
-          {/* Right Column: Bids Feed */}
+          {/* ── RIGHT: Bid History ── */}
           <div className="lg:col-span-5 space-y-4">
-            <Card className="border-agri-green/5 p-6 h-[400px] flex flex-col justify-between">
+            <Card className="border-agri-green/5 p-6 h-[480px] flex flex-col justify-between">
               <CardHeader className="p-0 pb-4 border-none">
-                <CardTitle className="text-base font-bold text-agri-green">Live Bid History</CardTitle>
-                <CardDescription>Updates in real-time</CardDescription>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-bold text-agri-green flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" /> Live Bid Feed
+                  </CardTitle>
+                  <span className="text-[10px] text-agri-brown font-semibold">{bidsList.length} bids</span>
+                </div>
+                <p className="text-[10px] text-agri-brown mt-0.5">Updates in real-time</p>
               </CardHeader>
 
-              <CardContent className="p-0 flex-1 overflow-y-auto space-y-3 pr-1">
+              <CardContent className="p-0 flex-1 overflow-y-auto space-y-2 pr-1">
                 <AnimatePresence initial={false}>
                   {bidsList.length === 0 ? (
-                    <p className="text-xs text-center text-agri-brown py-12 italic">No bids placed yet. Start the arena!</p>
+                    <p className="text-xs text-center text-agri-brown py-16 italic">No bids yet — be the first!</p>
                   ) : (
                     bidsList.map((bid, i) => (
                       <motion.div
@@ -483,18 +569,21 @@ export default function AuctionRoomPage() {
                         className={`p-3 rounded-2xl border text-xs flex justify-between items-center transition ${
                           bid.isUser || bid.bidderName?.includes("You")
                             ? "bg-agri-green/10 border-agri-green text-agri-green-dark dark:text-agri-green-light"
+                            : i === 0
+                            ? "bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/40 text-current"
                             : "bg-white/50 dark:bg-black/20 border-agri-green/5 text-current"
                         }`}
                       >
                         <div className="space-y-0.5">
                           <span className="font-extrabold flex items-center gap-1">
+                            {i === 0 && <span className="text-amber-500">👑</span>}
                             {bid.bidderName}
                             {(bid.isUser || bid.bidderName?.includes("You")) && (
                               <Badge variant="green" size="sm" className="normal-case scale-90">You</Badge>
                             )}
                           </span>
                           <span className="text-[9px] text-agri-brown font-semibold">
-                            {new Date(bid.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            {new Date(bid.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                           </span>
                         </div>
                         <span className="font-black text-sm text-agri-green">₹{bid.amount}/kg</span>

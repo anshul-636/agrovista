@@ -8,7 +8,8 @@ const { uploadToCloudinary } = require('../../config/cloudinary')
 // ──────────────────────────────────────────────
 const createAuction = async (farmerId, data, file) => {
 
-    const { productName, description, category, quantity, unit, startingPrice, startTime, endTime } = data
+    const { productName, description, category, quantity, unit, startingPrice, startTime, endTime,
+            reservePrice, buyNowPrice, minBidIncrement } = data
 
     if (!productName || !description || !category || !quantity || !unit || !startingPrice || !startTime || !endTime) {
         throw new ApiError(400, 'All fields are required')
@@ -31,6 +32,25 @@ const createAuction = async (farmerId, data, file) => {
         throw new ApiError(400, 'Start time must be in the future')
     }
 
+    const parsedStarting  = parseFloat(startingPrice)
+    const parsedReserve   = reservePrice  ? parseFloat(reservePrice)   : null
+    const parsedBuyNow    = buyNowPrice   ? parseFloat(buyNowPrice)     : null
+    const parsedIncrement = minBidIncrement ? parseInt(minBidIncrement) : 1
+
+    // Sanity-check optional pricing fields
+    if (parsedReserve !== null && parsedReserve < parsedStarting) {
+        throw new ApiError(400, 'Reserve price cannot be lower than starting price')
+    }
+    if (parsedBuyNow !== null && parsedBuyNow <= parsedStarting) {
+        throw new ApiError(400, 'Buy-Now price must be higher than starting price')
+    }
+    if (parsedReserve !== null && parsedBuyNow !== null && parsedBuyNow <= parsedReserve) {
+        throw new ApiError(400, 'Buy-Now price must be higher than reserve price')
+    }
+    if (parsedIncrement < 1) {
+        throw new ApiError(400, 'Minimum bid increment must be at least ₹1')
+    }
+
     // Upload image to Cloudinary using the buffer (memoryStorage)
     let imageUrl = "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&q=80" // Premium crop layout fallback
     if (file) {
@@ -46,13 +66,17 @@ const createAuction = async (farmerId, data, file) => {
         quantity: parseInt(quantity),
         unit,
         image: imageUrl,
-        startingPrice: parseFloat(startingPrice),
+        startingPrice: parsedStarting,
+        reservePrice: parsedReserve,
+        buyNowPrice: parsedBuyNow,
+        minBidIncrement: parsedIncrement,
+        reserveMet: false,
         startTime: start,
         endTime: end,
         status: 'UPCOMING'
     })
 
-    await auction.populate('farmer', 'name avatar location')
+    await auction.populate('farmer', 'name avatar location verificationStatus')
 
     return auction
 }
@@ -94,7 +118,7 @@ const getAllAuctions = async (query) => {
     if (status) filter.status = status
 
     const auctions = await Auction.find(filter)
-        .populate('farmer', 'name avatar location')
+        .populate('farmer', 'name avatar location verificationStatus')
         .populate('winner', 'name avatar')
         .sort({ endTime: 1 })   // soonest ending first
 
@@ -106,7 +130,7 @@ const getAllAuctions = async (query) => {
 // ──────────────────────────────────────────────
 const getAuctionById = async (auctionId) => {
     const auction = await Auction.findById(auctionId)
-        .populate('farmer', 'name avatar location')
+        .populate('farmer', 'name avatar location verificationStatus')
         .populate('winner', 'name avatar')
 
     if (!auction) throw new ApiError(404, 'Auction not found')
@@ -151,18 +175,27 @@ const placeBid = async (auctionId, bidderId, amount) => {
         throw new ApiError(400, `Purse Limit Exceeded! Your maximum available purse is ₹${(bidder.walletBalance || 0).toLocaleString()}`)
     }
 
-    // Bid must be higher than current bid (or starting price if no bids yet)
+    const increment = auction.minBidIncrement || 1
+
+    // Bid must exceed current bid by at least minBidIncrement
     const minimumBid = auction.currentBid
-        ? parseFloat(auction.currentBid) + 1
+        ? parseFloat(auction.currentBid) + increment
         : parseFloat(auction.startingPrice)
 
     if (bidAmount < minimumBid) {
         throw new ApiError(
             400,
-            'Bid must be at least ₹' + minimumBid +
-            (auction.currentBid ? ' (current bid + ₹1)' : ' (starting price)')
+            `Bid must be at least ₹${minimumBid}` +
+            (auction.currentBid
+                ? ` (current bid + ₹${increment} min increment)`
+                : ' (starting price)')
         )
     }
+
+    // ── Buy-Now: instant win if bidAmount >= buyNowPrice ───────────────────
+    const isBuyNow = auction.buyNowPrice !== null &&
+                     auction.buyNowPrice !== undefined &&
+                     bidAmount >= auction.buyNowPrice
 
     // Save the bid
     const bid = await Bid.create({
@@ -171,30 +204,55 @@ const placeBid = async (auctionId, bidderId, amount) => {
         amount: bidAmount
     })
 
-    // Optionally: DEDUCT FROM WALLER OR FREEZE IT? We'll just enforce the ceiling for now as per requirements.
-    // Update auction's current bid
+    // Check whether the reserve price is now met
+    const reserveMet = auction.reservePrice
+        ? bidAmount >= auction.reservePrice
+        : true   // no reserve = always met
 
-    await Auction.findByIdAndUpdate(auctionId, {
-        currentBid: bidAmount
-    })
+    // Update auction state
+    const auctionUpdate = {
+        currentBid: bidAmount,
+        reserveMet
+    }
+
+    if (isBuyNow) {
+        // Instantly close the auction — buyer wins
+        auctionUpdate.status  = 'ENDED'
+        auctionUpdate.winner  = bidderId
+        auctionUpdate.buyNowPrice = null   // consume so it can't fire again
+    }
+
+    await Auction.findByIdAndUpdate(auctionId, auctionUpdate)
 
     await bid.populate('bidder', 'name avatar')
 
     // Broadcast to all users watching this auction
     try {
         const { getIO } = require('../../config/socket')
-        getIO().to('auction:' + auctionId).emit('bid:new', {
+        const io = getIO()
+
+        io.to('auction:' + auctionId).emit('bid:new', {
             auctionId,
             bidId: bid._id,
             bidder: bid.bidder,
             amount: bidAmount,
+            reserveMet,
             timestamp: bid.createdAt
         })
+
+        if (isBuyNow) {
+            io.to('auction:' + auctionId).emit('auction:ended', {
+                auctionId,
+                winner: bid.bidder,
+                finalBid: bidAmount,
+                reason: 'BUY_NOW'
+            })
+        }
     } catch (err) {
         console.error('Socket bid emit failed:', err.message)
     }
 
-    return bid
+    return { bid, isBuyNow, reserveMet }
 }
 
 // ──────────────────────────────────────────────

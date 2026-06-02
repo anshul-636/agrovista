@@ -2,7 +2,7 @@ const asyncHandler = require('../../utils/asyncHandler')
 const ApiResponse = require('../../utils/ApiResponse')
 const ApiError = require('../../utils/ApiError')
 const User = require('../../models/User')
-const { getPublicProfile, getPublicStats } = require('./user.service')
+const { getPublicProfile, getPublicStats, requestVerification, reviewVerification, getPendingVerifications } = require('./user.service')
 const { getFarmerReviews } = require('../reviews/review.service')
 
 const getProfile = asyncHandler(async (req, res) => {
@@ -98,4 +98,37 @@ const updateRole = asyncHandler(async (req, res) => {
     res.json(new ApiResponse(200, user, 'Role updated successfully'))
 })
 
-module.exports = { getProfile, getUserReviews, getStats, updateProfile, updateRole }
+// ── Farmer Verification ──────────────────────────────────────────────────────
+
+// POST /api/users/me/verification-request
+// Body: { docUrls: ['https://...', 'https://...'] }
+const submitVerificationRequest = asyncHandler(async (req, res) => {
+    const { docUrls } = req.body
+    const result = await requestVerification(req.user._id, docUrls)
+    res.json(new ApiResponse(200, result, 'Verification request submitted successfully'))
+})
+
+// GET /api/users/admin/verifications  (admin only)
+const listPendingVerifications = asyncHandler(async (req, res) => {
+    const pending = await getPendingVerifications(req.user._id)
+    res.json(new ApiResponse(200, pending, 'Pending verifications fetched'))
+})
+
+// POST /api/users/admin/verifications/:farmerId
+// Body: { action: 'APPROVE' | 'REJECT', note: '...' }
+const processVerification = asyncHandler(async (req, res) => {
+    const { action, note } = req.body
+    const result = await reviewVerification(req.user._id, req.params.farmerId, action, note)
+    res.json(new ApiResponse(200, result, `Verification ${action === 'APPROVE' ? 'approved' : 'rejected'} successfully`))
+})
+
+module.exports = {
+    getProfile,
+    getUserReviews,
+    getStats,
+    updateProfile,
+    updateRole,
+    submitVerificationRequest,
+    listPendingVerifications,
+    processVerification
+}

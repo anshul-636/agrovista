@@ -3,7 +3,7 @@
 import React, { useState, Suspense } from "react";
 import RawImage from '../../components/ui/RawImage'
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, SlidersHorizontal, MapPin, Star, ShieldCheck, Heart, Tractor, ArrowUpDown } from "lucide-react";
+import { Search, SlidersHorizontal, MapPin, Star, ShieldCheck, Heart, Tractor, ArrowUpDown, BadgeCheck } from "lucide-react";
 import Header from "../../components/shared/Header";
 import { Card, CardContent } from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
@@ -185,7 +185,14 @@ function ProductListingContent() {
                         {prod.name}
                       </h4>
                     </Link>
-                    <p className="text-[10px] text-agri-brown truncate">Grower: {prod.farmerName || prod.farmer?.name || "Unknown"}</p>
+                    <p className="text-[10px] text-agri-brown flex items-center gap-1.5 flex-wrap">
+                      Grower: {prod.farmerName || prod.farmer?.name || "Unknown"}
+                      {prod.farmerVerified && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-agri-green/10 text-agri-green border border-agri-green/20">
+                          <BadgeCheck className="w-2.5 h-2.5" /> Verified
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
 

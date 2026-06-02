@@ -20,6 +20,8 @@ import {
   Gavel,
   X,
   TriangleAlert,
+  BadgeCheck,
+  Zap,
 } from "lucide-react";
 import Header from "../../components/shared/Header";
 import { Card } from "../../components/ui/Card";
@@ -254,7 +256,14 @@ function AuctionCard({ auction, phase, isFarmerOwner, onDeleteClick }) {
                 {auction.productName}
               </h4>
             </Link>
-            <p className="text-[10px] text-agri-brown">by {auction.farmerName}</p>
+            <p className="text-[10px] text-agri-brown flex items-center gap-1.5 flex-wrap">
+              by {auction.farmerName}
+              {auction.farmerVerified && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-agri-green/10 text-agri-green border border-agri-green/20">
+                  <BadgeCheck className="w-2.5 h-2.5" /> Verified
+                </span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -276,6 +285,27 @@ function AuctionCard({ auction, phase, isFarmerOwner, onDeleteClick }) {
               </p>
             </div>
           </div>
+
+          {/* Buy-Now / Reserve chips */}
+          {(auction.buyNowPrice || auction.reservePrice) && (
+            <div className="flex flex-wrap gap-1.5">
+              {auction.buyNowPrice && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                  <Zap className="w-2.5 h-2.5" /> Buy Now ₹{auction.buyNowPrice}
+                </span>
+              )}
+              {auction.reservePrice && (
+                <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                  auction.reserveMet
+                    ? "bg-agri-green/10 text-agri-green border-agri-green/20"
+                    : "bg-gray-100 dark:bg-zinc-800 text-agri-brown border-agri-green/10"
+                }`}>
+                  <Lock className="w-2.5 h-2.5" />
+                  {auction.reserveMet ? "Reserve Met" : `Reserve ₹${auction.reservePrice}`}
+                </span>
+              )}
+            </div>
+          )}
 
           {isLive ? (
             <Link href={`/auctions/${auction.id}`} className="block w-full">

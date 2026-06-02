@@ -32,6 +32,7 @@ const normalizeProduct = (item) => {
     farmerName: item.farmerName || item.farmer?.name || "Unknown",
     farmerLocation: item.farmerLocation || item.farmer?.location || item.location || "India",
     farmerTrustScore: Number(item.farmerTrustScore || item.farmer?.trustScore || 0),
+    farmerVerified: (item.farmer?.verificationStatus || item.farmerVerified) === "VERIFIED",
     price: Number(item.price || 0),
     quantity: Number(item.quantity || 0),
     images: Array.isArray(item.images) ? item.images : [],
@@ -46,6 +47,7 @@ const normalizeAuction = (item) => {
     farmerId: toId(item.farmerId || item.farmer),
     farmerName: item.farmerName || item.farmer?.name || "Unknown",
     farmerLocation: item.farmerLocation || item.farmer?.location || "India",
+    farmerVerified: (item.farmer?.verificationStatus || item.farmerVerified) === "VERIFIED",
     images: Array.isArray(item.images) ? item.images : item.image ? [item.image] : [],
     // server uses `quantity`, UI expects `lotSize` in several places — map both
     lotSize: item.lotSize || item.quantity || 0,
@@ -53,6 +55,11 @@ const normalizeAuction = (item) => {
     // numeric fields
     startingPrice: Number(item.startingPrice || 0),
     currentBid: item.currentBid == null ? (item.startingPrice ? Number(item.startingPrice) : null) : Number(item.currentBid),
+    // new pricing controls
+    reservePrice: item.reservePrice ? Number(item.reservePrice) : null,
+    buyNowPrice: item.buyNowPrice ? Number(item.buyNowPrice) : null,
+    minBidIncrement: Number(item.minBidIncrement || 1),
+    reserveMet: Boolean(item.reserveMet),
   };
 };
 
@@ -516,6 +523,40 @@ export const apiService = {
       return res.data;
     } catch (e) {
       throw e;
+    }
+  },
+
+  // ── Farmer Verification ──────────────────────────────────────────────────
+  // Farmer submits doc URLs for admin review
+  requestFarmerVerification: async (docUrls) => {
+    try {
+      const res = await api.post("/users/me/verification-request", { docUrls });
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
+    }
+  },
+
+  // Admin: list pending verifications
+  getPendingVerifications: async () => {
+    try {
+      const res = await api.get("/users/admin/verifications");
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
+    }
+  },
+
+  // Admin: approve or reject a verification
+  processVerification: async (farmerId, action, note) => {
+    try {
+      const res = await api.post(`/users/admin/verifications/${farmerId}`, { action, note });
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
     }
   }
 };

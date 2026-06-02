@@ -32,7 +32,7 @@ const createProduct = async (farmerId, data, files) => {
     })
 
     // Populate farmer info before returning
-    await product.populate('farmer', 'name avatar location')
+    await product.populate('farmer', 'name avatar location verificationStatus')
 
     return product
 }
@@ -91,7 +91,7 @@ const getAllProducts = async (query) => {
     const [total, products] = await Promise.all([
         Product.countDocuments(filter),
         Product.find(filter)
-            .populate('farmer', 'name avatar location')
+            .populate('farmer', 'name avatar location verificationStatus')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limitNum)
@@ -143,7 +143,7 @@ const getAllProducts = async (query) => {
 // ──────────────────────────────────────────────
 const getProductById = async (productId) => {
     const product = await Product.findById(productId)
-        .populate('farmer', 'name avatar location bio')
+        .populate('farmer', 'name avatar location bio verificationStatus')
 
     if (!product) throw new ApiError(404, 'Product not found')
 
@@ -223,7 +223,7 @@ const updateProduct = async (productId, farmerId, farmerName, data, files) => {
         productId,
         updateData,
         { new: true }
-    ).populate('farmer', 'name avatar')
+    ).populate('farmer', 'name avatar verificationStatus')
 
     return updated
 }

@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/authStore";
 import {
   ShieldCheck, MapPin, Edit3, Save, X, Camera, Mail, Phone,
   AlertTriangle, CheckCircle2, User, Wallet, Package, Star,
   Navigation, Clock, Sprout, TrendingUp, ShoppingBag, BarChart3,
   Leaf, Award, BadgeCheck, CircleDollarSign, Boxes, Heart,
+  FileText, Upload, CheckCircle, XCircle, Hourglass,
 } from "lucide-react";
 import Header from "../../components/shared/Header";
 import Sidebar from "../../components/shared/Sidebar";
@@ -101,6 +102,189 @@ function InfoRow({ icon: Icon, label, value }) {
   );
 }
 
+// ─── Farmer Verification Panel ───────────────────────────────────────────────
+function FarmerVerificationPanel({ user }) {
+  const queryClient = useQueryClient();
+  const [docUrls, setDocUrls] = useState(
+    (user?.verificationDocs || []).join("\n")
+  );
+  const [showForm, setShowForm] = useState(false);
+
+  const status = user?.verificationStatus || "UNVERIFIED";
+
+  const submitMutation = useMutation({
+    mutationFn: (urls) => apiService.requestFarmerVerification(urls),
+    onSuccess: (res) => {
+      if (res?.success || res?.data) {
+        toast.success("Verification request submitted! We'll review your documents shortly.");
+        setShowForm(false);
+        queryClient.invalidateQueries(["profileStats"]);
+        // Update auth store user
+        const { updateProfile } = useAuthStore.getState();
+        updateProfile({ verificationStatus: "PENDING" });
+      } else {
+        toast.error(res?.error || "Failed to submit");
+      }
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || "Submission failed");
+    },
+  });
+
+  const handleSubmit = () => {
+    const urls = docUrls.split("\n").map((u) => u.trim()).filter(Boolean);
+    if (urls.length === 0) {
+      toast.error("Please enter at least one document URL");
+      return;
+    }
+    submitMutation.mutate(urls);
+  };
+
+  const statusConfig = {
+    UNVERIFIED: {
+      icon: ShieldCheck,
+      color: "text-gray-400",
+      bg: "bg-gray-100 dark:bg-zinc-800",
+      label: "Not Verified",
+      desc: "Submit your documents to become a verified farmer and unlock the trust badge.",
+      badgeVariant: "outline",
+    },
+    PENDING: {
+      icon: Hourglass,
+      color: "text-amber-500",
+      bg: "bg-amber-50 dark:bg-amber-900/20",
+      label: "Under Review",
+      desc: "Your documents are being reviewed. This typically takes 24–48 hours.",
+      badgeVariant: "yellow",
+    },
+    VERIFIED: {
+      icon: BadgeCheck,
+      color: "text-agri-green",
+      bg: "bg-agri-green/10",
+      label: "Verified Farmer",
+      desc: user?.verifiedAt
+        ? `Verified on ${new Date(user.verifiedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.`
+        : "Your profile has been officially verified.",
+      badgeVariant: "green",
+    },
+    REJECTED: {
+      icon: XCircle,
+      color: "text-red-500",
+      bg: "bg-red-50 dark:bg-red-900/20",
+      label: "Verification Rejected",
+      desc: user?.verificationNote
+        ? `Reason: ${user.verificationNote}`
+        : "Your request was not approved. You may re-submit with correct documents.",
+      badgeVariant: "red",
+    },
+  };
+
+  const cfg = statusConfig[status] || statusConfig.UNVERIFIED;
+  const StatusIcon = cfg.icon;
+  const canSubmit = status === "UNVERIFIED" || status === "REJECTED";
+
+  return (
+    <Card className="border-agri-green/5 p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light flex items-center gap-1.5">
+            <BadgeCheck className="w-4 h-4 text-agri-green" /> Official Farmer Verification
+          </h3>
+          <p className="text-[10px] text-agri-brown mt-0.5">Verified badge appears on all your listings & auctions</p>
+        </div>
+        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
+          {cfg.label}
+        </span>
+      </div>
+
+      {/* Status block */}
+      <div className={`flex items-start gap-3 p-3 rounded-xl ${cfg.bg}`}>
+        <StatusIcon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${cfg.color}`} />
+        <p className={`text-xs font-semibold leading-relaxed ${cfg.color}`}>{cfg.desc}</p>
+      </div>
+
+      {/* Submitted doc list for PENDING */}
+      {status === "PENDING" && user?.verificationDocs?.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold text-agri-brown uppercase">Submitted Documents</p>
+          {user.verificationDocs.map((url, i) => (
+            <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 text-[11px] text-agri-green hover:underline truncate">
+              <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+              {url.length > 50 ? url.slice(0, 50) + "…" : url}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Submit / Re-submit form */}
+      {canSubmit && (
+        <div className="space-y-3">
+          {!showForm ? (
+            <button
+              onClick={() => setShowForm(true)}
+              className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-agri-green/20 text-agri-green text-xs font-bold hover:bg-agri-green/5 transition flex items-center justify-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              {status === "REJECTED" ? "Re-submit Verification Documents" : "Submit Verification Documents"}
+            </button>
+          ) : (
+            <AnimatePresence>
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-3"
+              >
+                <p className="text-[10px] text-agri-brown leading-relaxed">
+                  Paste one URL per line. Accepted documents: <span className="font-bold">Aadhaar card</span>, <span className="font-bold">land records (Khasra/Khatauni)</span>, <span className="font-bold">GST certificate</span>, or <span className="font-bold">PM-KISAN registration</span>. Upload to Google Drive or Cloudinary and paste the shareable link.
+                </p>
+                <textarea
+                  rows={4}
+                  value={docUrls}
+                  onChange={(e) => setDocUrls(e.target.value)}
+                  placeholder={"https://drive.google.com/...\nhttps://drive.google.com/..."}
+                  className="w-full px-4 py-3 rounded-xl border text-xs bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20 resize-none font-mono"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={handleSubmit}
+                    disabled={submitMutation.isPending}
+                    className="flex-1 py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    {submitMutation.isPending ? "Submitting…" : "Submit for Review"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowForm(false)}
+                    className="py-2 px-4 text-xs rounded-xl border-agri-green/15"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
+      )}
+
+      {/* Verified — show badge preview */}
+      {status === "VERIFIED" && (
+        <div className="flex items-center gap-2 p-3 bg-agri-green/5 rounded-xl border border-agri-green/10">
+          <BadgeCheck className="w-5 h-5 text-agri-green flex-shrink-0" />
+          <div>
+            <p className="text-xs font-extrabold text-agri-green">✓ Verified Badge Active</p>
+            <p className="text-[10px] text-agri-brown">Your badge appears on all product listings and auction rooms.</p>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ─── Farmer-specific right panel ──────────────────────────────────────────────
 function FarmerRightPanel({ user, liveStats }) {
   const ts   = liveStats?.trustScore   ?? user.trustScore   ?? 20;
@@ -170,13 +354,16 @@ function FarmerRightPanel({ user, liveStats }) {
       <Card className="border-agri-green/5 p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">Verification Status</h3>
+            <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">Profile Checklist</h3>
             <p className="text-[10px] text-agri-brown mt-0.5">Complete all checks to be listed higher in search</p>
           </div>
           <ShieldCheck className="w-8 h-8 text-agri-green opacity-60" />
         </div>
         {verifications.map((v, i) => <VerificationRow key={i} {...v} />)}
       </Card>
+
+      {/* Official farmer verification */}
+      <FarmerVerificationPanel user={user} />
 
       {/* Account info */}
       <Card className="border-agri-green/5 p-5 space-y-2">
