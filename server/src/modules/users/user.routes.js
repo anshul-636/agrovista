@@ -7,6 +7,7 @@ const {
     updateRole,
     submitVerificationRequest,
     uploadVerificationDocs,
+    emailVerificationAction,
     listPendingVerifications,
     processVerification
 } = require('./user.controller')
@@ -33,7 +34,9 @@ router.post('/me/verification-request', verifyToken, submitVerificationRequest)
 router.post('/me/verification-upload', verifyToken, upload.array('docs', 5), uploadVerificationDocs)
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
-// These routes are protected by the service layer (admin email check),
+// Public one-click link from email (token-signed, no session needed)
+// GET /api/users/admin/email-verify?token=xxx
+router.get('/admin/email-verify', emailVerificationAction)
 // not by a middleware role check, so any authenticated user gets a 403
 // unless their email is in ADMIN_EMAILS env var.
 router.get('/admin/verifications', verifyToken, listPendingVerifications)

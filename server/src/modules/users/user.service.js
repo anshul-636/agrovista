@@ -5,6 +5,8 @@ const Product = require('../../models/Product')
 const Auction = require('../../models/Auction')
 const ApiError = require('../../utils/ApiError')
 const { normalizeLocation } = require('../auth/auth.service')
+const jwt = require('jsonwebtoken')
+const { sendVerificationRequestEmail } = require('../../services/email.service')
 
 // ──────────────────────────────────────────────
 // TRUST SCORE CALCULATION
@@ -120,6 +122,7 @@ const getPublicStats = async () => {
 // REQUEST VERIFICATION (FARMER)
 // Farmer submits document URLs and moves status to PENDING.
 // On repeated submission (e.g. after rejection) it resets to PENDING.
+// Sends a one-click Approve/Reject email to all ADMIN_EMAILS.
 // ──────────────────────────────────────────────
 const requestVerification = async (farmerId, docUrls) => {
     const farmer = await User.findById(farmerId)
@@ -136,6 +139,32 @@ const requestVerification = async (farmerId, docUrls) => {
     farmer.verificationDocs   = docUrls
     farmer.verificationNote   = ''
     await farmer.save()
+
+    // ── Generate signed one-click tokens (expire in 72 h) ─────────────────
+    const secret = process.env.JWT_SECRET || 'fallback_secret'
+    const baseUrl = (process.env.API_URL || 'http://localhost:5000').replace(/\/$/, '')
+
+    const approveToken = jwt.sign(
+        { farmerId: String(farmerId), action: 'APPROVE' },
+        secret,
+        { expiresIn: '72h' }
+    )
+    const rejectToken = jwt.sign(
+        { farmerId: String(farmerId), action: 'REJECT' },
+        secret,
+        { expiresIn: '72h' }
+    )
+
+    const approveUrl = `${baseUrl}/api/users/admin/email-verify?token=${approveToken}`
+    const rejectUrl  = `${baseUrl}/api/users/admin/email-verify?token=${rejectToken}`
+
+    // ── Send email to admins (non-blocking — don't fail the request if email fails) ──
+    sendVerificationRequestEmail({ farmer, approveUrl, rejectUrl })
+        .then(result => {
+            if (result?.skipped) console.log('⚠️  Verification email skipped (SMTP not configured)')
+            else console.log('📧  Verification request email sent to admins')
+        })
+        .catch(err => console.error('❌  Verification email error:', err.message))
 
     return { verificationStatus: farmer.verificationStatus }
 }
