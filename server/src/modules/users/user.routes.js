@@ -9,7 +9,8 @@ const {
     uploadVerificationDocs,
     emailVerificationAction,
     listPendingVerifications,
-    processVerification
+    processVerification,
+    deleteAccount
 } = require('./user.controller')
 const { verifyToken } = require('../../middleware/auth')
 const { upload } = require('../../config/cloudinary')
@@ -24,6 +25,7 @@ router.get('/:id/reviews', getUserReviews)
 // ── Authenticated ────────────────────────────────────────────────────────────
 router.patch('/me', verifyToken, updateProfile)
 router.put('/me/role', verifyToken, updateRole)
+router.delete('/me', verifyToken, deleteAccount)
 
 // Farmer submits verification request (URL-based, kept for backwards compat)
 // POST /api/users/me/verification-request  { docUrls: [...] }

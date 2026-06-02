@@ -589,5 +589,15 @@ export const apiService = {
     } catch (e) {
       return { success: false, error: e?.response?.data?.message || e.message };
     }
+  },
+
+  deleteAccount: async () => {
+    try {
+      const res = await api.delete("/users/me");
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
+    }
   }
 };

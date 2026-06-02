@@ -226,6 +226,25 @@ function htmlResult(type, message) {
 </body>
 </html>`
 }
+const deleteAccount = asyncHandler(async (req, res) => {
+    const user = await User.findByIdAndDelete(req.user._id)
+
+    if (!user) {
+        throw new ApiError(404, 'User not found')
+    }
+
+    const COOKIE_OPTIONS = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+    }
+
+    res.clearCookie('refreshToken', COOKIE_OPTIONS)
+    res.clearCookie('accessToken', COOKIE_OPTIONS)
+
+    res.json(new ApiResponse(200, null, 'Account deleted successfully'))
+})
+
 module.exports = {
     getProfile,
     getUserReviews,
@@ -236,5 +255,6 @@ module.exports = {
     uploadVerificationDocs,
     emailVerificationAction,
     listPendingVerifications,
-    processVerification
+    processVerification,
+    deleteAccount
 }

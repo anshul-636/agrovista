@@ -17,6 +17,7 @@ import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { apiService } from "../../lib/api";
 
 // ─── Toggle switch ────────────────────────────────────────────────────────────
 function Toggle({ checked, onChange, id }) {
@@ -137,6 +138,25 @@ export default function SettingsPage() {
   const [showNew,          setShowNew]          = useState(false);
   const [savingPassword,   setSavingPassword]   = useState(false);
   const [showDeleteConfirm,setShowDeleteConfirm]= useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      const res = await apiService.deleteAccount();
+      if (res.success) {
+        toast.success("Account deleted successfully.");
+        logout();
+        router.push("/login");
+      } else {
+        toast.error(res.error || "Failed to delete account.");
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to delete account. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (!user) return null;
 
@@ -422,13 +442,21 @@ export default function SettingsPage() {
                       {isFarmer ? " Your active listings and pending orders will also be removed." : " Your order history and reviews will also be removed."}
                     </p>
                     <div className="flex gap-3">
-                      <button type="button" onClick={() => setShowDeleteConfirm(false)}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold border border-agri-green/20 text-agri-brown hover:bg-agri-green/5 transition">
+                      <button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold border border-agri-green/20 text-agri-brown hover:bg-agri-green/5 transition disabled:opacity-50">
                         Cancel
                       </button>
-                      <button type="button" onClick={() => toast.error("Account deletion is disabled in this demo.")}
-                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-500 text-white hover:bg-red-600 transition">
-                        Yes, Delete Account
+                      <button type="button" onClick={handleDeleteAccount} disabled={isDeleting}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-500 text-white hover:bg-red-600 transition flex items-center justify-center gap-1.5 disabled:opacity-50">
+                        {isDeleting ? (
+                          <>
+                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                            </svg>
+                            Deleting…
+                          </>
+                        ) : "Yes, Delete Account"}
                       </button>
                     </div>
                   </motion.div>
