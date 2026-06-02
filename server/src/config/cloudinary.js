@@ -18,11 +18,28 @@ const upload = multer({
 
 const uploadToCloudinary = (buffer, folder = 'agrovista/products') => {
     return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            {
+
+        // ── Verification documents (PDF + images) ───────────────────────────
+        // ── Product images ───────────────────────────────────────────────────
+        // Use resource_type: 'image' with resize transformation (always JPEG/PNG).
+        // ─────────────────────────────────────────────────────────────────────
+        const isVerificationFolder = folder.includes('verification')
+
+        const options = isVerificationFolder
+            ? {
                 folder,
+                resource_type: 'raw',   // store as-is, no conversion
+                use_filename: true,
+                unique_filename: true,
+            }
+            : {
+                folder,
+                resource_type: 'image',
                 transformation: [{ width: 800, height: 800, crop: 'limit' }]
-            },
+            }
+
+        const stream = cloudinary.uploader.upload_stream(
+            options,
             (error, result) => {
                 if (error) {
                     console.error('  ❌  Cloudinary upload error:', error.http_code, error.message)

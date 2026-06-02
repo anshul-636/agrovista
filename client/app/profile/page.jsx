@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/authStore";
 import {
@@ -120,9 +120,14 @@ function FarmerVerificationPanel({ user }) {
         toast.success("Documents uploaded! We'll review your verification request shortly.");
         setShowForm(false);
         setFiles([]);
+        // Invalidate so ProfilePage's farmerStats re-fetches fresh data from server
         queryClient.invalidateQueries(["profileStats"]);
+        // Also immediately update authStore with PENDING + the returned docUrls
         const { updateProfile } = useAuthStore.getState();
-        updateProfile({ verificationStatus: "PENDING" });
+        updateProfile({
+          verificationStatus: "PENDING",
+          verificationDocs: res?.data?.verificationDocs || res?.data?.docUrls || [],
+        });
       } else {
         toast.error(res?.error || "Upload failed. Please try again.");
       }
@@ -575,6 +580,20 @@ export default function ProfilePage() {
     enabled:  isFarmer && !!userId,
     select:   (res) => res?.data,
   });
+
+  // Sync server-fresh verification data into authStore whenever farmerStats loads.
+  // This fixes two bugs:
+  //   1. verificationStatus stays stale (localStorage) after admin approves/rejects
+  //   2. verificationDocs are missing in authStore so documents couldn't be viewed
+  useEffect(() => {
+    if (!farmerStats || !isFarmer) return;
+    updateProfile({
+      verificationStatus: farmerStats.verificationStatus,
+      verificationDocs:   farmerStats.verificationDocs   || [],
+      verificationNote:   farmerStats.verificationNote   || "",
+      verifiedAt:         farmerStats.verifiedAt         || null,
+    });
+  }, [farmerStats]);
 
   const { data: ordersRes } = useQuery({
     queryKey: ["profileOrders", "buyer", userId],

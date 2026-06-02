@@ -553,6 +553,22 @@ export const apiService = {
     }
   },
 
+  // Farmer uploads actual document files (JPG/PNG/PDF) to Cloudinary via server
+  // Called by the FarmerVerificationPanel in profile/page.jsx
+  uploadVerificationDocs: async (files) => {
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach((file) => formData.append("docs", file));
+      const res = await api.post("/users/me/verification-upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      return { success: false, error: e?.response?.data?.message || e.message };
+    }
+  },
+
   // Admin: list pending verifications
   getPendingVerifications: async () => {
     try {
