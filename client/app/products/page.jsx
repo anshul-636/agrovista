@@ -2,19 +2,14 @@
 
 import React, { useState, Suspense } from "react";
 import RawImage from '../../components/ui/RawImage'
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, SlidersHorizontal, MapPin, Star, ShieldCheck, Heart, Tractor, ArrowUpDown } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, MapPin, Star, Tractor, ArrowUpDown, BadgeCheck } from "lucide-react";
 import Header from "../../components/shared/Header";
 import { Card, CardContent } from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
-import Input from "../../components/ui/Input";
 import { apiService } from "../../lib/api";
-import { useAuthStore } from "../../store/authStore";
-import { useSocketStore } from "../../store/socketStore";
-import { toast } from "sonner";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 
 export default function ProductListingPage() {
   return (
@@ -25,24 +20,18 @@ export default function ProductListingPage() {
 }
 
 function ProductListingContent() {
-  const searchParams = useSearchParams();
-  const farmerFilter = searchParams ? searchParams.get("farmer") : null;
-
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [isOrganic, setIsOrganic] = useState(false);
   const [sortBy, setSortBy] = useState("price_asc");
 
   // Fetch products with TanStack Query
-  const { data: productsRes, isLoading, refetch } = useQuery({
-    queryKey: ["products", { search, category, isOrganic, farmer: farmerFilter }],
-    queryFn: () => apiService.getProducts({ search, category, isOrganic, farmer: farmerFilter }),
+  const { data: productsRes, isLoading } = useQuery({
+    queryKey: ["products", { search, category, isOrganic }],
+    queryFn: () => apiService.getProducts({ search, category, isOrganic }),
   });
 
   const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
-  const { user } = useAuthStore();
-  const { socket } = useSocketStore();
-  const queryClient = useQueryClient();
 
   const getProductId = (product) => product.id || product._id;
 
@@ -156,13 +145,22 @@ function ProductListingContent() {
                 <div className="space-y-4 w-full">
                   {/* Card Image */}
                   <div className="relative h-40 w-full rounded-2xl overflow-hidden bg-agri-green/10 group">
-                    <RawImage
-                      src={prod.images[0] || "https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"}
-                      alt={prod.name}
-                      width={600}
-                      height={240}
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
+                    {prod.images?.[0] ? (
+                      <RawImage
+                        src={prod.images[0]}
+                        alt={prod.name}
+                        width={600}
+                        height={240}
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-agri-green/5 border border-dashed border-agri-green/20">
+                        <svg className="w-10 h-10 text-agri-green/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-[10px] text-agri-green/40 font-semibold mt-1.5">No image provided</p>
+                      </div>
+                    )}
                     {prod.isOrganic && (
                       <div className="absolute top-2.5 left-2.5">
                         <Badge variant="green" size="sm">Organic</Badge>
@@ -185,7 +183,14 @@ function ProductListingContent() {
                         {prod.name}
                       </h4>
                     </Link>
-                    <p className="text-[10px] text-agri-brown truncate">Grower: {prod.farmerName || prod.farmer?.name || "Unknown"}</p>
+                    <p className="text-[10px] text-agri-brown flex items-center gap-1.5 flex-wrap">
+                      Grower: {prod.farmerName || prod.farmer?.name || "Unknown"}
+                      {prod.farmerVerified && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-agri-green/10 text-agri-green border border-agri-green/20">
+                          <BadgeCheck className="w-2.5 h-2.5" /> Verified
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
 
@@ -212,35 +217,6 @@ function ProductListingContent() {
                         View details
                       </Button>
                     </Link>
-
-                    {/* Farmer-only delete button */}
-                    {(String(prod.farmerId) === String(user?.id) || String(prod.farmer?._id) === String(user?.id) || new URLSearchParams(window.location.search).get('farmer') === 'mine') && (
-                      <button
-                        onClick={async () => {
-                          const ok = window.confirm('Remove this product from marketplace? This will delete the listing.')
-                          if (!ok) return
-                          try {
-                            await apiService.deleteProduct(getProductId(prod))
-                            toast.success('Product removed from marketplace')
-                            // refetch products & farmer analytics + farmer products lists
-                            queryClient.invalidateQueries(['products'])
-                            queryClient.invalidateQueries(['farmerAnalytics'])
-                            queryClient.invalidateQueries(['farmerProducts'])
-                            // notify via socket so live clients can update
-                            if (socket && typeof socket.emit === 'function') {
-                              socket.emit('product:deleted', { productId: getProductId(prod) })
-                            }
-                          } catch (err) {
-                            console.error('Delete failed', err)
-                            toast.error(err?.response?.data?.message || err?.message || 'Delete failed')
-                          }
-                        }}
-                        title="Remove product"
-                        className="py-2 px-3 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700"
-                      >
-                        Remove
-                      </button>
-                    )}
                   </div>
                 </div>
               </Card>

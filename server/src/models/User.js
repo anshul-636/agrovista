@@ -39,6 +39,30 @@ const userSchema = new mongoose.Schema(
         walletBalance: {
             type: Number,
             default: 1000000 // 10 Lakhs purse default
+        },
+
+        // ── Farmer Verification ──────────────────────────────────────────────
+        // Farmers can request verification by submitting documents.
+        // An admin (or automated flow) then approves/rejects the request.
+        // Verified farmers show a badge on listings, auctions, and their profile.
+        verificationStatus: {
+            type: String,
+            enum: ['UNVERIFIED', 'PENDING', 'VERIFIED', 'REJECTED'],
+            default: 'UNVERIFIED'
+        },
+        verificationDocs: {
+            // URLs of uploaded documents (Aadhaar, land record, GST, etc.)
+            type: [String],
+            default: []
+        },
+        verificationNote: {
+            // Admin note on rejection or approval
+            type: String,
+            default: ''
+        },
+        verifiedAt: {
+            type: Date,
+            default: null
         }
     },
     {

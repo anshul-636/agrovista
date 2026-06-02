@@ -29,6 +29,10 @@ export default function CreateAuctionPage() {
   const [startInput, setStartInput] = useState("");
   const [endInput, setEndInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  // Advanced pricing
+  const [reservePrice, setReservePrice] = useState("");
+  const [buyNowPrice, setBuyNowPrice] = useState("");
+  const [minBidIncrement, setMinBidIncrement] = useState("1");
 
   // Redirect if not authorized farmer
   useEffect(() => {
@@ -91,6 +95,9 @@ export default function CreateAuctionPage() {
       fd.append('startingPrice', String(Number(startingPrice)));
       fd.append('startTime', startTimeISO);
       fd.append('endTime', endTimeISO);
+      if (reservePrice)     fd.append('reservePrice',     String(Number(reservePrice)));
+      if (buyNowPrice)      fd.append('buyNowPrice',      String(Number(buyNowPrice)));
+      if (minBidIncrement)  fd.append('minBidIncrement',  String(Number(minBidIncrement)));
       fd.append('image', imageFile);
       createAuctionMutation.mutate(fd);
       return;
@@ -104,7 +111,10 @@ export default function CreateAuctionPage() {
       unit,
       startingPrice: Number(startingPrice),
       startTime: startTimeISO,
-      endTime: endTimeISO
+      endTime: endTimeISO,
+      ...(reservePrice    && { reservePrice:    Number(reservePrice) }),
+      ...(buyNowPrice     && { buyNowPrice:     Number(buyNowPrice) }),
+      ...(minBidIncrement && { minBidIncrement: Number(minBidIncrement) }),
     });
   };
 
@@ -195,6 +205,50 @@ export default function CreateAuctionPage() {
                       { value: "OTHER", label: "Other" }
                     ]}
                   />
+                </div>
+
+                {/* Advanced Pricing Controls */}
+                <div className="pt-2 border-t border-agri-green/10 space-y-3">
+                  <div>
+                    <p className="text-xs font-bold text-agri-green-dark dark:text-agri-green-light">Advanced Pricing Controls</p>
+                    <p className="text-[10px] text-agri-brown mt-0.5">Optional — leave blank to use standard bidding rules</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-agri-green-dark block mb-1.5">Reserve Price (₹)</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 50"
+                        value={reservePrice}
+                        onChange={(e) => setReservePrice(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border text-sm bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20"
+                      />
+                      <p className="text-[9px] text-agri-brown mt-1">Lot won't sell if bids stay below this</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-agri-green-dark block mb-1.5">Buy-Now Price (₹)</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 80"
+                        value={buyNowPrice}
+                        onChange={(e) => setBuyNowPrice(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border text-sm bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20"
+                      />
+                      <p className="text-[9px] text-agri-brown mt-1">Buyer can instantly win at this price</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-agri-green-dark block mb-1.5">Min Bid Increment (₹)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="1"
+                        value={minBidIncrement}
+                        onChange={(e) => setMinBidIncrement(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border text-sm bg-white dark:bg-black/20 border-agri-green/10 focus:outline-none focus:ring-2 focus:ring-agri-green/20"
+                      />
+                      <p className="text-[9px] text-agri-brown mt-1">Each bid must exceed last by this amount</p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">

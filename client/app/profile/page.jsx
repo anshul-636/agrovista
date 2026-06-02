@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../store/authStore";
 import {
   ShieldCheck, MapPin, Edit3, Save, X, Camera, Mail, Phone,
   AlertTriangle, CheckCircle2, User, Wallet, Package, Star,
   Navigation, Clock, Sprout, TrendingUp, ShoppingBag, BarChart3,
   Leaf, Award, BadgeCheck, CircleDollarSign, Boxes, Heart,
+  FileText, Upload, CheckCircle, XCircle, Hourglass,
 } from "lucide-react";
 import Header from "../../components/shared/Header";
 import Sidebar from "../../components/shared/Sidebar";
@@ -101,6 +102,293 @@ function InfoRow({ icon: Icon, label, value }) {
   );
 }
 
+// ─── Farmer Verification Panel ───────────────────────────────────────────────
+function FarmerVerificationPanel({ user }) {
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm]     = useState(false);
+  const [files, setFiles]           = useState([]);        // File[]
+  const [dragOver, setDragOver]     = useState(false);
+  const fileInputRef                = React.useRef(null);
+
+  const status = user?.verificationStatus || "UNVERIFIED";
+
+  // ── mutation: upload files ────────────────────────────────────────────────
+  const uploadMutation = useMutation({
+    mutationFn: (selectedFiles) => apiService.uploadVerificationDocs(selectedFiles),
+    onSuccess: (res) => {
+      if (res?.success || res?.data) {
+        toast.success("Documents uploaded! We'll review your verification request shortly.");
+        setShowForm(false);
+        setFiles([]);
+        // Invalidate so ProfilePage's farmerStats re-fetches fresh data from server
+        queryClient.invalidateQueries(["profileStats"]);
+        // Also immediately update authStore with PENDING + the returned docUrls
+        const { updateProfile } = useAuthStore.getState();
+        updateProfile({
+          verificationStatus: "PENDING",
+          verificationDocs: res?.data?.verificationDocs || res?.data?.docUrls || [],
+        });
+      } else {
+        toast.error(res?.error || "Upload failed. Please try again.");
+      }
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || "Upload failed. Please try again.");
+    },
+  });
+
+  // ── helpers ───────────────────────────────────────────────────────────────
+  const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  const MAX_SIZE_MB    = 5;
+
+  const addFiles = (incoming) => {
+    const valid = Array.from(incoming).filter((f) => {
+      if (!ACCEPTED_TYPES.includes(f.type)) {
+        toast.error(`${f.name}: unsupported type. Use JPG, PNG, WEBP, or PDF.`);
+        return false;
+      }
+      if (f.size > MAX_SIZE_MB * 1024 * 1024) {
+        toast.error(`${f.name}: exceeds ${MAX_SIZE_MB} MB limit.`);
+        return false;
+      }
+      return true;
+    });
+    setFiles((prev) => {
+      const names = new Set(prev.map((p) => p.name));
+      const fresh = valid.filter((v) => !names.has(v.name));
+      return [...prev, ...fresh].slice(0, 5);     // max 5 docs
+    });
+  };
+
+  const removeFile = (idx) => setFiles((prev) => prev.filter((_, i) => i !== idx));
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const handleSubmit = () => {
+    if (files.length === 0) {
+      toast.error("Please select at least one document to upload.");
+      return;
+    }
+    uploadMutation.mutate(files);
+  };
+
+  const fileIcon = (f) =>
+    f.type === "application/pdf" ? "📄" : "🖼️";
+
+  // ── status config ─────────────────────────────────────────────────────────
+  const statusConfig = {
+    UNVERIFIED: {
+      icon: ShieldCheck,
+      color: "text-gray-400",
+      bg: "bg-gray-100 dark:bg-zinc-800",
+      label: "Not Verified",
+      desc: "Upload your documents to become a verified farmer and unlock the trust badge.",
+      badgeVariant: "outline",
+    },
+    PENDING: {
+      icon: Hourglass,
+      color: "text-amber-500",
+      bg: "bg-amber-50 dark:bg-amber-900/20",
+      label: "Under Review",
+      desc: "Your documents are being reviewed. This typically takes 24–48 hours.",
+      badgeVariant: "yellow",
+    },
+    VERIFIED: {
+      icon: BadgeCheck,
+      color: "text-agri-green",
+      bg: "bg-agri-green/10",
+      label: "Verified Farmer",
+      desc: user?.verifiedAt
+        ? `Verified on ${new Date(user.verifiedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.`
+        : "Your profile has been officially verified.",
+      badgeVariant: "green",
+    },
+    REJECTED: {
+      icon: XCircle,
+      color: "text-red-500",
+      bg: "bg-red-50 dark:bg-red-900/20",
+      label: "Verification Rejected",
+      desc: user?.verificationNote
+        ? `Reason: ${user.verificationNote}`
+        : "Your request was not approved. You may re-submit with correct documents.",
+      badgeVariant: "red",
+    },
+  };
+
+  const cfg       = statusConfig[status] || statusConfig.UNVERIFIED;
+  const StatusIcon = cfg.icon;
+  const canSubmit  = status === "UNVERIFIED" || status === "REJECTED";
+
+  return (
+    <Card className="border-agri-green/5 p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light flex items-center gap-1.5">
+            <BadgeCheck className="w-4 h-4 text-agri-green" /> Official Farmer Verification
+          </h3>
+          <p className="text-[10px] text-agri-brown mt-0.5">Verified badge appears on all your listings & auctions</p>
+        </div>
+        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
+          {cfg.label}
+        </span>
+      </div>
+
+      {/* Status block */}
+      <div className={`flex items-start gap-3 p-3 rounded-xl ${cfg.bg}`}>
+        <StatusIcon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${cfg.color}`} />
+        <p className={`text-xs font-semibold leading-relaxed ${cfg.color}`}>{cfg.desc}</p>
+      </div>
+
+      {/* Submitted doc list for PENDING */}
+      {status === "PENDING" && user?.verificationDocs?.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-bold text-agri-brown uppercase">Submitted Documents</p>
+          {user.verificationDocs.map((url, i) => (
+            <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 text-[11px] text-agri-green hover:underline truncate">
+              <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+              {url.length > 50 ? url.slice(0, 50) + "…" : url}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* ── Upload form ── */}
+      {canSubmit && (
+        <div className="space-y-3">
+          {!showForm ? (
+            <button
+              onClick={() => setShowForm(true)}
+              className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-agri-green/20 text-agri-green text-xs font-bold hover:bg-agri-green/5 transition flex items-center justify-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              {status === "REJECTED" ? "Re-submit Verification Documents" : "Submit Verification Documents"}
+            </button>
+          ) : (
+            <AnimatePresence>
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-3 overflow-hidden"
+              >
+                {/* Accepted doc types hint */}
+                <p className="text-[10px] text-agri-brown leading-relaxed">
+                  Upload up to <span className="font-bold">5 files</span> (JPG, PNG, WEBP, PDF · max 5 MB each).
+                  Accepted: <span className="font-bold">Aadhaar card</span>,{" "}
+                  <span className="font-bold">land records (Khasra/Khatauni)</span>,{" "}
+                  <span className="font-bold">GST certificate</span>, or{" "}
+                  <span className="font-bold">PM-KISAN registration</span>.
+                </p>
+
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.webp,.pdf"
+                  className="hidden"
+                  onChange={(e) => addFiles(e.target.files)}
+                />
+
+                {/* Drag-and-drop zone */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`cursor-pointer rounded-xl border-2 border-dashed transition-all px-4 py-6 flex flex-col items-center gap-2 ${
+                    dragOver
+                      ? "border-agri-green bg-agri-green/5"
+                      : "border-agri-green/20 hover:border-agri-green/40 hover:bg-agri-green/5"
+                  }`}
+                >
+                  <Upload className={`w-6 h-6 ${dragOver ? "text-agri-green" : "text-agri-green/40"}`} />
+                  <p className="text-xs font-bold text-agri-green">
+                    {dragOver ? "Drop files here" : "Click to browse or drag & drop"}
+                  </p>
+                  <p className="text-[10px] text-agri-brown">JPG, PNG, WEBP, PDF — up to 5 MB each</p>
+                </div>
+
+                {/* File preview list */}
+                {files.length > 0 && (
+                  <div className="space-y-2">
+                    {files.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-2 bg-agri-green/5 rounded-xl border border-agri-green/10">
+                        <span className="text-base">{fileIcon(f)}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold text-agri-green-dark dark:text-gray-200 truncate">{f.name}</p>
+                          <p className="text-[9px] text-agri-brown">{(f.size / 1024).toFixed(0)} KB</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(i)}
+                          className="flex-shrink-0 text-red-400 hover:text-red-600 transition"
+                          aria-label="Remove file"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={handleSubmit}
+                    disabled={uploadMutation.isPending || files.length === 0}
+                    className="flex-1 py-2 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
+                  >
+                    {uploadMutation.isPending ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                        </svg>
+                        Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Upload & Submit ({files.length} file{files.length !== 1 ? "s" : ""})
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => { setShowForm(false); setFiles([]); }}
+                    className="py-2 px-4 text-xs rounded-xl border-agri-green/15"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
+      )}
+
+      {/* Verified — show badge preview */}
+      {status === "VERIFIED" && (
+        <div className="flex items-center gap-2 p-3 bg-agri-green/5 rounded-xl border border-agri-green/10">
+          <BadgeCheck className="w-5 h-5 text-agri-green flex-shrink-0" />
+          <div>
+            <p className="text-xs font-extrabold text-agri-green">✓ Verified Badge Active</p>
+            <p className="text-[10px] text-agri-brown">Your badge appears on all product listings and auction rooms.</p>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ─── Farmer-specific right panel ──────────────────────────────────────────────
 function FarmerRightPanel({ user, liveStats }) {
   const ts   = liveStats?.trustScore   ?? user.trustScore   ?? 20;
@@ -170,13 +458,16 @@ function FarmerRightPanel({ user, liveStats }) {
       <Card className="border-agri-green/5 p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">Verification Status</h3>
+            <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light">Profile Checklist</h3>
             <p className="text-[10px] text-agri-brown mt-0.5">Complete all checks to be listed higher in search</p>
           </div>
           <ShieldCheck className="w-8 h-8 text-agri-green opacity-60" />
         </div>
         {verifications.map((v, i) => <VerificationRow key={i} {...v} />)}
       </Card>
+
+      {/* Official farmer verification */}
+      <FarmerVerificationPanel user={user} />
 
       {/* Account info */}
       <Card className="border-agri-green/5 p-5 space-y-2">
@@ -289,6 +580,20 @@ export default function ProfilePage() {
     enabled:  isFarmer && !!userId,
     select:   (res) => res?.data,
   });
+
+  // Sync server-fresh verification data into authStore whenever farmerStats loads.
+  // This fixes two bugs:
+  //   1. verificationStatus stays stale (localStorage) after admin approves/rejects
+  //   2. verificationDocs are missing in authStore so documents couldn't be viewed
+  useEffect(() => {
+    if (!farmerStats || !isFarmer) return;
+    updateProfile({
+      verificationStatus: farmerStats.verificationStatus,
+      verificationDocs:   farmerStats.verificationDocs   || [],
+      verificationNote:   farmerStats.verificationNote   || "",
+      verifiedAt:         farmerStats.verifiedAt         || null,
+    });
+  }, [farmerStats]);
 
   const { data: ordersRes } = useQuery({
     queryKey: ["profileOrders", "buyer", userId],

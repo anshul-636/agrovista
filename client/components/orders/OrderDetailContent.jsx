@@ -590,7 +590,7 @@ export default function OrderDetailContent() {
                       {isDelivered
                         ? "— released to grower."
                         : order.paymentMethod === "COD"
-                        ? "— settled via COD."
+                        ? "— payable on delivery."
                         : "— locked until delivery confirmation."}
                     </p>
                   </div>

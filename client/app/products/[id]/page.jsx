@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import RawImage from '../../../components/ui/RawImage'
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MapPin, ShieldCheck, Heart, ArrowLeft, Star, ShoppingBag, Plus, Minus, UserCheck } from "lucide-react";
+import { MapPin, ShieldCheck, Heart, ArrowLeft, Star, ShoppingBag, Plus, Minus, UserCheck, BadgeCheck } from "lucide-react";
 import Header from "../../../components/shared/Header";
 import Button from "../../../components/ui/Button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../../../components/ui/Card";
@@ -41,6 +41,7 @@ export default function ProductDetailPage() {
       farmerName: product.farmerName || product.farmer?.name || "Unknown",
       farmerLocation: product.farmerLocation || product.farmer?.location || product.location || "India",
       farmerTrustScore: product.farmerTrustScore || product.farmer?.trustScore || 90,
+      farmerVerified: (product.farmer?.verificationStatus || product.farmerVerified) === "VERIFIED",
       reviews: product.reviews || [],
       images: product.images && product.images.length > 0 ? product.images : ["https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"],
     };
@@ -252,8 +253,13 @@ export default function ProductDetailPage() {
                   <UserCheck className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-extrabold text-agri-green-dark dark:text-agri-green-light">
+                  <h4 className="text-sm font-extrabold text-agri-green-dark dark:text-agri-green-light flex items-center gap-1.5 flex-wrap">
                     Grower: {product.farmerName}
+                    {product.farmerVerified && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-agri-green/10 text-agri-green border border-agri-green/20">
+                        <BadgeCheck className="w-2.5 h-2.5" /> Verified Farmer
+                      </span>
+                    )}
                   </h4>
                   <div className="flex items-center gap-1.5 text-[10px] text-agri-brown font-bold uppercase mt-0.5">
                     <Star className="w-3.5 h-3.5 text-agri-wheat fill-current" />

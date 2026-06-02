@@ -109,10 +109,10 @@ export default function FarmerDashboard() {
     enabled: !!user && user.role === "FARMER"
   });
 
-  // Fetch farmer products (My Listings)
+  // Fetch farmer products (My Listings) — uses the dedicated /products/farmer/mine endpoint
   const { data: farmerProductsRes, isLoading: farmerProductsLoading } = useQuery({
     queryKey: ["farmerProducts"],
-    queryFn: () => apiService.getProducts({ farmer: 'mine' }),
+    queryFn: () => apiService.getMyProducts(),
     enabled: !!user && user.role === "FARMER"
   });
 
@@ -192,6 +192,16 @@ export default function FarmerDashboard() {
   const auctions = auctionsRes?.data?.filter(a => a.farmerId === user.id) || [];
   const farmerProducts = Array.isArray(farmerProductsRes?.data) ? farmerProductsRes.data : [];
 
+  // Build a real month-over-month label from the analytics data the server computed.
+  // Possible shapes: "+18% vs last month", "-5% vs last month", "same as last month", "first month of data"
+  const growth = analytics?.summary?.revenueGrowth ?? null
+  const revenueGrowthLabel = (() => {
+    if (growth === null) return "vs last month"
+    if (growth === 0) return "same as last month"
+    if (growth === 100 && (analytics?.summary?.prevMonthRevenue ?? 0) === 0) return "first month of data"
+    return `${growth > 0 ? "+" : ""}${growth}% vs last month`
+  })()
+
   // Reviews + per-review order cross-reference
   const reviewsList = Array.isArray(reviewsRes?.data?.reviews)
     ? reviewsRes.data.reviews
@@ -258,7 +268,7 @@ export default function FarmerDashboard() {
               {
                 title: "Monthly Earnings",
                 value: `₹${(analytics?.summary?.thisMonthRevenue || 0).toLocaleString()}`,
-                desc: "+14% from last month",
+                desc: revenueGrowthLabel,
                 icon: TrendingUp,
                 color: "text-agri-green bg-agri-green/10"
               },
@@ -396,7 +406,7 @@ export default function FarmerDashboard() {
                   <CardTitle className="text-base font-bold text-agri-green">My Listings</CardTitle>
                   <CardDescription>Manage your active product listings</CardDescription>
                 </div>
-                <Button variant="outline" onClick={() => router.push('/products?farmer=mine')} className="py-1 px-3 text-[10px] rounded-lg font-bold">Manage All</Button>
+                <Button variant="outline" onClick={() => router.push('/products/my-listings')} className="py-1 px-3 text-[10px] rounded-lg font-bold">Manage All</Button>
               </CardHeader>
               <CardContent>
                 {farmerProducts.length === 0 ? (

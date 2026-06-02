@@ -2,8 +2,9 @@ const asyncHandler = require('../../utils/asyncHandler')
 const ApiResponse = require('../../utils/ApiResponse')
 const ApiError = require('../../utils/ApiError')
 const User = require('../../models/User')
-const { getPublicProfile, getPublicStats } = require('./user.service')
+const { getPublicProfile, getPublicStats, requestVerification, reviewVerification, getPendingVerifications } = require('./user.service')
 const { getFarmerReviews } = require('../reviews/review.service')
+const { uploadFiles } = require('../../config/cloudinary')
 
 const getProfile = asyncHandler(async (req, res) => {
     const profile = await getPublicProfile(req.params.id)
@@ -98,4 +99,142 @@ const updateRole = asyncHandler(async (req, res) => {
     res.json(new ApiResponse(200, user, 'Role updated successfully'))
 })
 
-module.exports = { getProfile, getUserReviews, getStats, updateProfile, updateRole }
+// ── Farmer Verification ──────────────────────────────────────────────────────
+
+// POST /api/users/me/verification-request
+// Body: { docUrls: ['https://...', 'https://...'] }
+const submitVerificationRequest = asyncHandler(async (req, res) => {
+    const { docUrls } = req.body
+    const result = await requestVerification(req.user._id, docUrls)
+    res.json(new ApiResponse(200, result, 'Verification request submitted successfully'))
+})
+
+// GET /api/users/admin/verifications  (admin only)
+const listPendingVerifications = asyncHandler(async (req, res) => {
+    const pending = await getPendingVerifications(req.user._id)
+    res.json(new ApiResponse(200, pending, 'Pending verifications fetched'))
+})
+
+// POST /api/users/admin/verifications/:farmerId
+// Body: { action: 'APPROVE' | 'REJECT', note: '...' }
+const processVerification = asyncHandler(async (req, res) => {
+    const { action, note } = req.body
+    const result = await reviewVerification(req.user._id, req.params.farmerId, action, note)
+    res.json(new ApiResponse(200, result, `Verification ${action === 'APPROVE' ? 'approved' : 'rejected'} successfully`))
+})
+
+// POST /api/users/me/verification-upload  (multipart/form-data, field: "docs")
+// Uploads files to Cloudinary and immediately submits a verification request.
+const uploadVerificationDocs = asyncHandler(async (req, res) => {
+    if (!req.files || req.files.length === 0) {
+        throw new ApiError(400, 'Please upload at least one document file')
+    }
+    if (req.user.role !== 'FARMER') {
+        throw new ApiError(403, 'Only farmers can request verification')
+    }
+    if (req.user.verificationStatus === 'VERIFIED') {
+        throw new ApiError(400, 'Your account is already verified')
+    }
+
+    // Upload all files to Cloudinary under the verificationDocs folder
+    const docUrls = await uploadFiles(req.files, 'agrovista/verification-docs')
+
+    // Reuse the existing service to set status → PENDING and store the URLs
+    const result = await requestVerification(req.user._id, docUrls)
+    res.json(new ApiResponse(200, result, 'Verification documents uploaded and request submitted'))
+})
+
+// GET /api/users/admin/email-verify?token=xxx
+// Public endpoint — called when admin clicks Approve/Reject in their email.
+// The token is a signed JWT (72h expiry) containing { farmerId, action }.
+// Returns a styled HTML page so the admin sees a result in their browser.
+const emailVerificationAction = asyncHandler(async (req, res) => {
+    const { token } = req.query
+    if (!token) return res.status(400).send(htmlResult('error', 'Missing token.'))
+
+    let payload
+    try {
+        payload = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'fallback_secret')
+    } catch (err) {
+        const msg = err.name === 'TokenExpiredError'
+            ? 'This link has expired (links are valid for 72 hours).'
+            : 'Invalid or tampered token.'
+        return res.status(400).send(htmlResult('error', msg))
+    }
+
+    const { farmerId, action } = payload
+    if (!farmerId || !['APPROVE', 'REJECT'].includes(action)) {
+        return res.status(400).send(htmlResult('error', 'Malformed token payload.'))
+    }
+
+    const farmer = await require('../../models/User').findById(farmerId)
+    if (!farmer) return res.status(404).send(htmlResult('error', 'Farmer not found.'))
+
+    if (farmer.verificationStatus !== 'PENDING') {
+        const alreadyMsg = farmer.verificationStatus === 'VERIFIED'
+            ? `${farmer.name} is already verified.`
+            : `This request was already processed (status: ${farmer.verificationStatus}).`
+        return res.status(400).send(htmlResult('info', alreadyMsg))
+    }
+
+    farmer.verificationStatus = action === 'APPROVE' ? 'VERIFIED' : 'REJECTED'
+    farmer.verificationNote   = action === 'APPROVE' ? 'Approved via admin email.' : 'Rejected via admin email.'
+    if (action === 'APPROVE') farmer.verifiedAt = new Date()
+    await farmer.save()
+
+    // In-app notification to farmer
+    try {
+        const { createNotification } = require('../notifications/notification.service')
+        await createNotification({
+            userId: farmerId,
+            type: 'VERIFICATION_UPDATE',
+            title: action === 'APPROVE' ? '✅ Verification Approved!' : '❌ Verification Rejected',
+            body: action === 'APPROVE'
+                ? 'Congratulations! Your farmer profile is now officially verified. A badge will appear on all your listings.'
+                : 'Your verification request was not approved. Please re-submit with correct documents.'
+        })
+    } catch (err) {
+        console.error('Notification error after email verify:', err.message)
+    }
+
+    const successMsg = action === 'APPROVE'
+        ? `✅ ${farmer.name} has been verified successfully! They will receive an in-app notification.`
+        : `❌ ${farmer.name}'s verification request has been rejected. They will receive an in-app notification.`
+
+    return res.send(htmlResult(action === 'APPROVE' ? 'approve' : 'reject', successMsg))
+})
+
+
+function htmlResult(type, message) {
+    const colors = {
+        approve: { bg: '#f0fdf4', border: '#86efac', icon: '✅', title: 'Verification Approved', text: '#166534' },
+        reject:  { bg: '#fff1f2', border: '#fca5a5', icon: '❌', title: 'Request Rejected',      text: '#991b1b' },
+        error:   { bg: '#fefce8', border: '#fde68a', icon: '⚠️', title: 'Action Failed',         text: '#92400e' },
+        info:    { bg: '#f0f9ff', border: '#bae6fd', icon: 'ℹ️', title: 'Already Processed',    text: '#0c4a6e' },
+    }
+    const c = colors[type] || colors.info
+    return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>AgroVista Admin</title></head>
+<body style="margin:0;background:#f0f7f0;font-family:'Segoe UI',Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+  <div style="background:${c.bg};border:2px solid ${c.border};border-radius:16px;padding:40px 48px;max-width:480px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.08);">
+    <div style="font-size:48px;margin-bottom:12px;">${c.icon}</div>
+    <h2 style="margin:0 0 12px;color:${c.text};font-size:22px;font-weight:800;">${c.title}</h2>
+    <p style="margin:0 0 24px;color:${c.text};font-size:15px;line-height:1.6;opacity:0.85;">${message}</p>
+    <p style="margin:0;color:#52796f;font-size:12px;">AgroVista Admin · You can close this tab.</p>
+  </div>
+</body>
+</html>`
+}
+module.exports = {
+    getProfile,
+    getUserReviews,
+    getStats,
+    updateProfile,
+    updateRole,
+    submitVerificationRequest,
+    uploadVerificationDocs,
+    emailVerificationAction,
+    listPendingVerifications,
+    processVerification
+}

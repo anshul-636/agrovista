@@ -3,6 +3,7 @@ const cors = require('cors')
 const cookieParser = require('cookie-parser')
 const session = require('express-session')
 const passport = require('./config/passport')
+const { apiLimiter } = require('./middleware/rateLimiter')
 
 const authRoutes = require('./modules/auth/auth.routes')
 const oauthRoutes = require('./modules/auth/oauth.routes')
@@ -53,6 +54,10 @@ app.get('/health', (req, res) => {
 app.get("/", (req, res) => {
     res.send("Agrovista backend running");
 });
+
+// Global rate limiter — applied to every /api/* route before any handler runs
+app.use('/api', apiLimiter)
+
 app.use('/api/auth', authRoutes)
 app.use('/api/auth', oauthRoutes)
 app.use('/api/products', productRoutes)

@@ -36,6 +36,31 @@ const auctionSchema = new mongoose.Schema(
             type: Number,
             required: true
         },
+        // ── Advanced pricing controls ────────────────────────────────────────
+        // reservePrice: if the final bid is below this, the lot is NOT sold.
+        //   Shown to buyers as "Reserve not met" until crossed.
+        reservePrice: {
+            type: Number,
+            default: null   // null = no reserve (always sells to highest bidder)
+        },
+        // buyNowPrice: any buyer can instantly win at this price before auction ends.
+        //   Cleared (set to null) once triggered so it can't be reused.
+        buyNowPrice: {
+            type: Number,
+            default: null   // null = no buy-now option
+        },
+        // minBidIncrement: each new bid must exceed current bid by at least this amount.
+        //   Defaults to 1 (same as before) for backward compat.
+        minBidIncrement: {
+            type: Number,
+            default: 1,
+            min: 1
+        },
+        // Whether the reserve price has been met (computed flag, updated on each bid)
+        reserveMet: {
+            type: Boolean,
+            default: false
+        },
         currentBid: {
             type: Number,
             default: null
