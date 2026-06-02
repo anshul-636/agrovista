@@ -13,9 +13,8 @@ const createProduct = async (farmerId, data, files) => {
         images = bodyImages.filter(url => typeof url === 'string' && url.startsWith('http'))
     }
 
-    if (images.length === 0) {
-        images = ["https://images.unsplash.com/photo-1595855759920-86582396756a?auto=format&fit=crop&q=80&w=600"]
-    }
+    // No fallback image — frontend enforces image is required before submission.
+    // If images is still empty here, create the product without images (blank state).
 
     const product = await Product.create({
         farmer: farmerId,

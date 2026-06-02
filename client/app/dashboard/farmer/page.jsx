@@ -109,10 +109,10 @@ export default function FarmerDashboard() {
     enabled: !!user && user.role === "FARMER"
   });
 
-  // Fetch farmer products (My Listings)
+  // Fetch farmer products (My Listings) — uses the dedicated /products/farmer/mine endpoint
   const { data: farmerProductsRes, isLoading: farmerProductsLoading } = useQuery({
     queryKey: ["farmerProducts"],
-    queryFn: () => apiService.getProducts({ farmer: 'mine' }),
+    queryFn: () => apiService.getMyProducts(),
     enabled: !!user && user.role === "FARMER"
   });
 
@@ -406,7 +406,7 @@ export default function FarmerDashboard() {
                   <CardTitle className="text-base font-bold text-agri-green">My Listings</CardTitle>
                   <CardDescription>Manage your active product listings</CardDescription>
                 </div>
-                <Button variant="outline" onClick={() => router.push('/products?farmer=mine')} className="py-1 px-3 text-[10px] rounded-lg font-bold">Manage All</Button>
+                <Button variant="outline" onClick={() => router.push('/products/my-listings')} className="py-1 px-3 text-[10px] rounded-lg font-bold">Manage All</Button>
               </CardHeader>
               <CardContent>
                 {farmerProducts.length === 0 ? (

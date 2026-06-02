@@ -203,6 +203,21 @@ export const apiService = {
     }
   },
 
+  // Fetch only the currently authenticated farmer's own products
+  getMyProducts: async () => {
+    try {
+      const res = await api.get("/products/farmer/mine");
+      const payload = unwrapData(res);
+      const list = Array.isArray(payload) ? payload : Array.isArray(payload?.products) ? payload.products : [];
+      return {
+        success: true,
+        data: list.map(normalizeProduct),
+      };
+    } catch (e) {
+      throw e;
+    }
+  },
+
   getProductById: async (id) => {
     try {
       const res = await api.get(`/products/${id}`);
@@ -527,25 +542,10 @@ export const apiService = {
   },
 
   // ── Farmer Verification ──────────────────────────────────────────────────
-  // Farmer submits doc URLs for admin review (kept for backwards compat)
+  // Farmer submits doc URLs for admin review
   requestFarmerVerification: async (docUrls) => {
     try {
       const res = await api.post("/users/me/verification-request", { docUrls });
-      const payload = unwrapData(res);
-      return { success: true, data: payload };
-    } catch (e) {
-      return { success: false, error: e?.response?.data?.message || e.message };
-    }
-  },
-
-  // Farmer uploads document files directly (multipart/form-data)
-  uploadVerificationDocs: async (files) => {
-    try {
-      const formData = new FormData();
-      files.forEach((file) => formData.append("docs", file));
-      const res = await api.post("/users/me/verification-upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
       const payload = unwrapData(res);
       return { success: true, data: payload };
     } catch (e) {

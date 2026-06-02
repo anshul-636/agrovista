@@ -26,7 +26,7 @@ export default function Sidebar() {
 
   const farmerLinks = [
     { label: "Overview", href: "/dashboard/farmer", icon: LayoutDashboard },
-    { label: "My Listings", href: "/products?farmer=mine", icon: ShoppingBag },
+    { label: "My Listings", href: "/products/my-listings", icon: ShoppingBag },
     { label: "Create Product", href: "/products/create", icon: PlusCircle },
     { label: "Incoming Orders", href: "/orders", icon: FileText },
     { label: "My Auctions", href: "/auctions?owner=mine", icon: Landmark },
@@ -65,7 +65,9 @@ export default function Sidebar() {
       <div className="flex flex-col gap-1.5 flex-1">
         {links.map((link) => {
           const Icon = link.icon;
-          const isActive = pathname === link.href;
+          // Strip query string from href for path comparison
+          const linkPath = link.href.split("?")[0];
+          const isActive = pathname === linkPath;
           return (
             <Link
               key={link.href}
