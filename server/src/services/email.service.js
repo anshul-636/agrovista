@@ -1,51 +1,78 @@
-let nodemailer = null
+// email.service.js
+// Uses Resend (HTTPS API) — works on Render free tier.
+// SMTP (nodemailer) is blocked by Render on all outbound port 587/465/25.
+//
+// Setup:
+//   1. npm install resend  (in the server folder)
+//   2. Sign up free at https://resend.com → API Keys → Create
+//   3. Add to Render env vars:
+//        RESEND_API_KEY = re_xxxxxxxxxxxx
+//        EMAIL_FROM     = AgroVista <onboarding@resend.dev>
+//        ADMIN_EMAILS   = youremail@gmail.com,other@gmail.com
+//        API_URL        = https://your-render-app.onrender.com
 
+let ResendClient = null
 try {
-    nodemailer = require('nodemailer')
-} catch (err) {
-    console.warn('Email delivery disabled: install nodemailer in the server package to enable SMTP.')
+    ResendClient = require('resend').Resend
+} catch {
+    console.warn('⚠️  Email disabled: run "npm install resend" inside the server folder.')
 }
 
-let transporter = null
-
-const getTransporter = () => {
-    if (transporter) return transporter
-    if (!nodemailer) return null
-
-    const host = process.env.SMTP_HOST
-    const port = Number(process.env.SMTP_PORT || 587)
-    const user = process.env.SMTP_USER
-    const pass = process.env.SMTP_PASS
-
-    if (!host || !user || !pass) return null
-
-    transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: String(process.env.SMTP_SECURE || 'false') === 'true',
-        auth: { user, pass }
-    })
-
-    return transporter
+let _client = null
+const getClient = () => {
+    if (_client) return _client
+    if (!ResendClient) return null
+    const key = process.env.RESEND_API_KEY
+    if (!key) {
+        console.warn('⚠️  Email disabled: RESEND_API_KEY env var is not set.')
+        return null
+    }
+    _client = new ResendClient(key)
+    return _client
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERIC SEND — same interface as before, drop-in replacement
+// ─────────────────────────────────────────────────────────────────────────────
 const sendEmail = async ({ to, subject, text, html }) => {
-    const mailer = getTransporter()
-    if (!mailer || !to) return { skipped: true }
+    const client = getClient()
+    if (!client || !to) return { skipped: true }
 
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER
-    if (!from) return { skipped: true }
+    const from = process.env.EMAIL_FROM || 'AgroVista <onboarding@resend.dev>'
 
-    const info = await mailer.sendMail({ from, to, subject, text, html: html || text })
-    return { messageId: info.messageId, accepted: info.accepted }
+    try {
+        const { data, error } = await client.emails.send({
+            from,
+            to: Array.isArray(to) ? to : [to],
+            subject,
+            text,
+            html: html || text,
+        })
+
+        if (error) {
+            console.error('❌ Resend error:', error)
+            return { skipped: true, error }
+        }
+
+        console.log('📧 Email sent via Resend, id:', data.id)
+        return { messageId: data.id, accepted: Array.isArray(to) ? to : [to] }
+    } catch (err) {
+        console.error('❌ Resend send failed:', err.message)
+        return { skipped: true }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FARMER VERIFICATION REQUEST EMAIL
 // Sent to ADMIN_EMAILS when a farmer submits documents for review.
-//  ─────────────────────────────────────────────────────────────────────────────
+// Contains one-click Approve / Reject buttons that hit your server directly.
+// ─────────────────────────────────────────────────────────────────────────────
 const sendVerificationRequestEmail = async ({ farmer, approveUrl, rejectUrl }) => {
-    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean)
+    const adminEmails = (process.env.ADMIN_EMAILS || '')
+        .split(',')
+        .map(e => e.trim())
+        .filter(Boolean)
+
     if (adminEmails.length === 0) {
         console.warn('⚠️  ADMIN_EMAILS not set — skipping verification email')
         return { skipped: true }
@@ -122,14 +149,13 @@ const sendVerificationRequestEmail = async ({ farmer, approveUrl, rejectUrl }) =
             <h3 style="margin:0 0 12px;color:#1b4332;font-size:15px;font-weight:700;">
               📂 Submitted Documents
             </h3>
-            <table width="100%" cellpadding="0" cellspacing="0"
-                   style="margin-bottom:28px;">
-              ${docLinks || '<tr><td style="color:#52796f;font-size:13px;">No documents found.</td></tr>'}
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+              ${docLinks || '<tr><td style="color:#52796f;font-size:13px;">No documents attached.</td></tr>'}
             </table>
 
             <p style="margin:0 0 20px;color:#52796f;font-size:13px;line-height:1.6;">
-              Please review the documents above and take action below.
-              These links expire in <strong>72 hours</strong>.
+              Review the documents above, then click one of the buttons below.<br>
+              <strong>These links expire in 72 hours.</strong>
             </p>
 
             <!-- Action Buttons -->
@@ -161,8 +187,8 @@ const sendVerificationRequestEmail = async ({ farmer, approveUrl, rejectUrl }) =
         <tr>
           <td style="background:#f0f7f0;padding:18px 32px;text-align:center;">
             <p style="margin:0;color:#74c69d;font-size:11px;">
-              AgroVista Admin · This email was sent because you are listed as an admin.<br>
-              Do not forward this email — the approval links are single-use.
+              AgroVista Admin · You are receiving this because your email is in ADMIN_EMAILS.<br>
+              Do not forward — the approval links are single-use and expire in 72 hours.
             </p>
           </td>
         </tr>
@@ -175,9 +201,9 @@ const sendVerificationRequestEmail = async ({ farmer, approveUrl, rejectUrl }) =
 </html>`
 
     return sendEmail({
-        to: adminEmails.join(','),
+        to: adminEmails,
         subject: `[AgroVista] Verification Request — ${farmer.name} (${farmer.email})`,
-        text: `New farmer verification request from ${farmer.name} (${farmer.email}).\n\nApprove: ${approveUrl}\nReject: ${rejectUrl}`,
+        text: `New farmer verification request.\n\nFarmer: ${farmer.name}\nEmail: ${farmer.email}\nLocation: ${farmer.location || '—'}\n\nApprove: ${approveUrl}\nReject: ${rejectUrl}\n\nLinks expire in 72 hours.`,
         html
     })
 }
