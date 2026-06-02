@@ -182,8 +182,8 @@ function FarmerRightPanel({ user, liveStats }) {
       <Card className="border-agri-green/5 p-5 space-y-2">
         <h3 className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light mb-1">Account Info</h3>
         <InfoRow icon={User}   label="Role"         value={<Badge variant="green" size="sm">FARMER</Badge>} />
-        <InfoRow icon={Clock}  label="Member since" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"} />
-        <InfoRow icon={Wallet} label="Wallet"        value={`₹${(user.walletBalance ?? 0).toLocaleString("en-IN")}`} />
+        <InfoRow icon={Clock}  label="Member since" value={(liveStats?.createdAt || user.createdAt) ? new Date(liveStats?.createdAt || user.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"} />
+        <InfoRow icon={Wallet} label="Wallet"        value={`₹${((liveStats?.walletBalance ?? user.walletBalance) ?? 0).toLocaleString("en-IN")}`} />
       </Card>
     </div>
   );
