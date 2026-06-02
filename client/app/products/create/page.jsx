@@ -64,6 +64,10 @@ export default function CreateProductPage() {
       toast.error("Please fill in all required fields (including description).");
       return;
     }
+    if (!imageUrl.trim()) {
+      toast.error("A product image is required. Buyers need to see what they are purchasing.");
+      return;
+    }
 
     createProductMutation.mutate({
       name,
@@ -74,7 +78,7 @@ export default function CreateProductPage() {
       quantity: Number(quantity),
       harvestDate,
       isOrganic,
-      images: imageUrl ? [imageUrl] : undefined
+      images: [imageUrl]
     });
   };
 
@@ -239,7 +243,9 @@ export default function CreateProductPage() {
 
                   {/* Image upload / URL input */}
                   <div className="space-y-3">
-                    <span className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">Crop Images</span>
+                    <span className="text-xs font-semibold text-agri-green-dark dark:text-agri-green-light">
+                      Crop Image <span className="text-red-500">*</span>
+                    </span>
                     <div className="border-2 border-dashed border-agri-green/15 dark:border-agri-green-light/15 bg-white/40 dark:bg-black/10 rounded-2xl p-6 text-center space-y-2">
                         <div className="w-10 h-10 text-agri-brown mx-auto">
                           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto">
@@ -252,13 +258,19 @@ export default function CreateProductPage() {
                       <p className="text-[10px] text-agri-brown-light">Supports JPG, PNG formats up to 5MB. Handled via Cloudinary</p>
                     </div>
                     <Input
-                      label="Or Provide Image URL"
+                      label="Product Image URL *"
                       id="imageUrl"
                       type="text"
-                      placeholder="https://images.unsplash.com/photo-..."
+                      placeholder="https://example.com/your-crop-photo.jpg"
                       value={imageUrl}
                       onChange={(e) => setImageUrl(e.target.value)}
+                      required
                     />
+                    {!imageUrl && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                        ⚠ An image is required to publish your listing.
+                      </p>
+                    )}
                   </div>
                 </Card>
 
