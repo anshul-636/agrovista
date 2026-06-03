@@ -239,6 +239,29 @@ export default function AuctionRoomPage() {
   const minIncrement = auction?.minBidIncrement || 1;
   const minAllowed = (auction?.currentBid ?? auction?.startingPrice ?? 0) + minIncrement;
 
+  // ── Is the current logged-in user the auction winner? ──────────────────────
+  const isCurrentUserWinner = Boolean(
+    isExpired && user && auction?.winner && (() => {
+      const wid = typeof auction.winner === 'object'
+        ? (auction.winner._id || auction.winner.id)
+        : auction.winner;
+      const uid = user._id || user.id;
+      return wid && uid && String(wid) === String(uid);
+    })()
+  );
+
+  const handleProceedToPayment = () => {
+    const params = new URLSearchParams({
+      auctionId: String(auction.id || auction._id),
+      name: auction.productName || '',
+      bid: String(currentBid),
+      qty: String(auction.quantity || auction.lotSize || 1),
+      unit: auction.unit || 'kg',
+      img: encodeURIComponent(auction.image || '')
+    });
+    router.push('/auctions/checkout?' + params.toString());
+  };
+
   const validateBid = (val) => {
     if (!canBid) { toast.error(auctionPhase === "upcoming" ? "Auction hasn't started." : "Auction has ended."); return false; }
     if (!isAuthenticated) { toast.error("Please sign in to bid."); router.push("/login"); return false; }
@@ -367,6 +390,18 @@ export default function AuctionRoomPage() {
                 <span className="ml-2 text-amber-400">(Reserve not met — lot may not transfer)</span>
               )}
             </p>
+            {/* ── Winner CTA: only shown to the actual winner ── */}
+            {isCurrentUserWinner && (
+              <div className="pt-2 space-y-2">
+                <p className="text-xs text-agri-wheat font-bold">🎉 Congratulations! You won this lot.</p>
+                <button
+                  onClick={handleProceedToPayment}
+                  className="w-full py-3 px-6 rounded-2xl bg-agri-wheat text-agri-green-dark font-black text-sm hover:bg-yellow-300 transition shadow-lg flex items-center justify-center gap-2"
+                >
+                  Proceed to Payment & Delivery →
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
 
@@ -510,6 +545,18 @@ export default function AuctionRoomPage() {
                       ? "This auction is scheduled but not yet open. Come back when it starts."
                       : `Auction finished. Final price: ₹${currentBid}/kg.`}
                   </p>
+                  {/* ── Winner payment CTA inside the bidding card ── */}
+                  {isCurrentUserWinner && (
+                    <div className="pt-1 space-y-1.5">
+                      <p className="text-xs text-agri-green font-bold">🏆 You are the winner! Complete checkout to confirm your order.</p>
+                      <button
+                        onClick={handleProceedToPayment}
+                        className="w-full py-3 px-6 rounded-2xl bg-agri-green text-white font-black text-sm hover:bg-agri-green-dark transition shadow flex items-center justify-center gap-2"
+                      >
+                        Proceed to Payment & Delivery →
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </Card>
