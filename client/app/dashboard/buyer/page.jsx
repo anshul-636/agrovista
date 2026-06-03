@@ -25,6 +25,7 @@ import {
   Truck,
   BoxIcon,
   ClipboardList,
+  Trophy,
 } from "lucide-react";
 import { useAuthStore } from "../../../store/authStore";
 import { useNotificationStore } from "../../../store/notificationStore";
@@ -224,6 +225,17 @@ function BuyerDashboardContent() {
   const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
   const orders = Array.isArray(ordersRes?.data) ? ordersRes.data : [];
   const auctions = Array.isArray(auctionsRes?.data) ? auctionsRes.data : [];
+
+  // Auctions that have ENDED and the current user is the winner —
+  // filter to ones that don't already have a corresponding order paid.
+  const wonAuctions = auctions.filter((auc) => {
+    if (auc.status !== "ENDED") return false;
+    const winnerId = typeof auc.winner === "object"
+      ? (auc.winner?._id || auc.winner?.id)
+      : auc.winner;
+    const uid = user?._id || user?.id;
+    return winnerId && uid && String(winnerId) === String(uid);
+  });
 
   const confirmPurchaseMutation = useMutation({
     mutationFn: (orderId) => apiService.verifyOrderDelivery(orderId),
@@ -451,6 +463,54 @@ function BuyerDashboardContent() {
                 )}
 
                 {/* ── Order History + Active Bids ── */}
+                {/* ── Won Auctions Pending Checkout ── */}
+                {wonAuctions.length > 0 && (
+                  <div className="mb-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-amber-500" />
+                      <span className="font-black text-amber-700 dark:text-amber-400 text-sm">
+                        Auction Win{wonAuctions.length > 1 ? "s" : ""} Pending Payment
+                      </span>
+                    </div>
+                    {wonAuctions.map((auc) => {
+                      const params = new URLSearchParams({
+                        auctionId: String(auc.id || auc._id),
+                        name: auc.productName || "",
+                        bid: String(auc.currentBid || 0),
+                        qty: String(auc.quantity || auc.lotSize || 1),
+                        unit: auc.unit || "kg",
+                        img: encodeURIComponent(auc.image || "")
+                      });
+                      return (
+                        <div
+                          key={auc.id || auc._id}
+                          className="flex items-center gap-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700"
+                        >
+                          {auc.image && (
+                            <img
+                              src={auc.image}
+                              alt={auc.productName}
+                              className="w-12 h-12 rounded-xl object-cover shrink-0"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm text-amber-800 dark:text-amber-300 truncate">{auc.productName}</p>
+                            <p className="text-xs text-amber-700 dark:text-amber-400">
+                              Won at ₹{auc.currentBid?.toLocaleString()}/unit · {auc.quantity || auc.lotSize} {auc.unit}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => router.push("/auctions/checkout?" + params.toString())}
+                            className="shrink-0 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs transition shadow"
+                          >
+                            Pay Now →
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Order History */}
                   <Card className="border-agri-green/5">

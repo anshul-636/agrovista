@@ -47,6 +47,21 @@ const startAuctionCron = () => {
                 console.log('Auction ended:', auction.productName,
                     highestBid ? 'Winner: ' + highestBid.bidder.name : 'No bids')
 
+                // Notify the winner so they know to complete checkout
+                if (highestBid) {
+                    try {
+                        const { createNotification } = require('../modules/notifications/notification.service')
+                        await createNotification({
+                            userId: highestBid.bidder._id,
+                            type: 'ORDER_UPDATE',
+                            title: '🏆 You Won the Auction!',
+                            body: `Congratulations! You won "${auction.productName}" at ₹${highestBid.amount}/unit. Please complete your payment to confirm the order.`
+                        })
+                    } catch (e) {
+                        console.error('Winner notification failed:', e.message)
+                    }
+                }
+
                 try {
                     const { getIO } = require('../config/socket')
                     getIO().to('auction:' + auction._id.toString()).emit('auction:ended', {

@@ -481,7 +481,14 @@ export default function FarmerDashboard() {
                             <td className="p-4 font-extrabold text-agri-green-dark dark:text-agri-green-light">
                               #{order.id}
                             </td>
-                            <td className="p-4 font-bold">{order.productName} ({order.quantity}kg)</td>
+                            <td className="p-4 font-bold">
+                              <span>{order.productName} ({order.quantity}{order.unit || 'kg'})</span>
+                              {order.isAuctionOrder && (
+                                <span className="ml-2 text-[10px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">
+                                  🏆 Auction
+                                </span>
+                              )}
+                            </td>
                             <td className="p-4 font-medium">{order.buyerName}</td>
                             <td className="p-4 font-black">₹{order.totalAmount.toLocaleString()}</td>
                             <td className="p-4">

@@ -71,7 +71,7 @@ const normalizeOrder = (item) => {
     productId: toId(item.productId || item.product),
     farmerId: toId(item.farmerId || item.farmer),
     buyerId: toId(item.buyerId || item.buyer),
-    productName: item.productName || item.product?.name || "Unknown",
+    productName: item.productName || item.auctionProductName || item.product?.name || "Unknown",
     buyerName: item.buyerName || item.buyer?.name || "Unknown",
     farmerName: item.farmerName || item.farmer?.name || "Unknown",
     unit: item.unit || item.product?.unit || "kg",
@@ -80,6 +80,11 @@ const normalizeOrder = (item) => {
     // Persisted flag from the server — true when this buyer already reviewed
     // the farmer for this order. Prevents "Leave Review" reappearing on refresh.
     hasReview: Boolean(item.hasReview),
+    // Auction order fields
+    isAuctionOrder: Boolean(item.auctionId),
+    auctionId: item.auctionId || null,
+    auctionProductName: item.auctionProductName || null,
+    auctionImage: item.auctionImage || null,
   };
 };
 
@@ -370,7 +375,46 @@ export const apiService = {
     }
   },
 
-  // Orders Operations
+  // ── Post-auction winner checkout ──────────────────────────────────
+  // Create an order after winning an auction
+  createAuctionOrder: async (auctionId, { paymentMethod, deliveryAddress, deliveryNotes }) => {
+    try {
+      const res = await api.post(`/auctions/${auctionId}/checkout`, {
+        paymentMethod, deliveryAddress, deliveryNotes
+      });
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      const message = e?.response?.data?.message || e?.message || 'Failed to create auction order';
+      return { success: false, error: message };
+    }
+  },
+
+  // Create Razorpay payment intent for an auction order
+  createAuctionPaymentIntent: async (orderId) => {
+    try {
+      const res = await api.post(`/auctions/orders/${orderId}/payment`, {});
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      const message = e?.response?.data?.message || e?.message || 'Failed to create payment intent';
+      return { success: false, error: message };
+    }
+  },
+
+  // Verify Razorpay payment for an auction order
+  verifyAuctionPayment: async (orderId, razorpayData) => {
+    try {
+      const res = await api.post(`/auctions/orders/${orderId}/verify-payment`, razorpayData);
+      const payload = unwrapData(res);
+      return { success: true, data: payload };
+    } catch (e) {
+      const message = e?.response?.data?.message || e?.message || 'Payment verification failed';
+      return { success: false, error: message };
+    }
+  },
+
+
   getOrders: async (role) => {
     try {
       const endpoint = role === "FARMER" ? "/orders/farmer" : "/orders/buyer";

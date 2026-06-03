@@ -81,7 +81,13 @@ const orderSchema = new mongoose.Schema(
             phone: { type: String, required: true }
         },
         refundStatus: { type: String, enum: ['None', 'Pending', 'Refunded'], default: 'None' },
-        refundTransactionId: { type: String, default: '' }
+        refundTransactionId: { type: String, default: '' },
+
+        // ── Auction order fields ──────────────────────────────────────────────
+        // Populated only when this order was created from an auction win
+        auctionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Auction', default: null },
+        auctionProductName: { type: String, default: null },
+        auctionImage: { type: String, default: null }
     },
     {
         timestamps: true
