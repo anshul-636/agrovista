@@ -8,6 +8,7 @@ const {
     submitVerificationRequest,
     uploadVerificationDocs,
     emailVerificationAction,
+    emailVerificationReject,
     listPendingVerifications,
     processVerification,
     deleteAccount
@@ -37,10 +38,11 @@ router.post('/me/verification-upload', verifyToken, upload.array('docs', 5), upl
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 // Public one-click link from email (token-signed, no session needed)
-// GET /api/users/admin/email-verify?token=xxx
+// GET  /api/users/admin/email-verify?token=xxx  → approve immediately OR show reject form
 router.get('/admin/email-verify', emailVerificationAction)
-// not by a middleware role check, so any authenticated user gets a 403
-// unless their email is in ADMIN_EMAILS env var.
+// POST /api/users/admin/email-verify  → submit reject form with reason
+router.post('/admin/email-verify', emailVerificationReject)
+
 router.get('/admin/verifications', verifyToken, listPendingVerifications)
 router.post('/admin/verifications/:farmerId', verifyToken, processVerification)
 

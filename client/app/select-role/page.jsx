@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Tractor, ShoppingCart, ArrowRight, Loader } from "lucide-react";
@@ -8,7 +8,9 @@ import { useAuthStore } from "../../store/authStore";
 import Button from "../../components/ui/Button";
 import { toast } from "sonner";
 
-export default function SelectRolePage() {
+
+
+function SelectRoleContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuthStore();
@@ -25,7 +27,6 @@ export default function SelectRolePage() {
 
   useEffect(() => {
     setMounted(true);
-    // Verify we have tokens
     if (!accessToken || !refreshToken) {
       toast.error("Session expired. Please login again.");
       router.push("/login");
@@ -40,7 +41,6 @@ export default function SelectRolePage() {
 
     setIsLoading(true);
     try {
-      // Update user role via API
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const res = await fetch(`${apiUrl}/users/me/role`, {
         method: "PUT",
@@ -53,28 +53,13 @@ export default function SelectRolePage() {
 
       if (!res.ok) throw new Error("Failed to update role");
 
-      const userData = await res.json();
-      const user = userData.data;
-
-      // Store tokens and login
       localStorage.setItem("agrovista_token", accessToken);
       localStorage.setItem("agrovista_refresh_token", refreshToken);
 
-      login(
-        {
-          id: userId,
-          email,
-          name,
-          role,
-        },
-        accessToken
-      );
+      login({ id: userId, email, name, role }, accessToken, refreshToken);
 
       toast.success(`Welcome as ${role}!`);
-
-      // Redirect to appropriate dashboard
-      const dashboardUrl = role === "FARMER" ? "/dashboard/farmer" : "/dashboard/buyer";
-      router.push(dashboardUrl);
+      router.push(role === "FARMER" ? "/dashboard/farmer" : "/dashboard/buyer");
     } catch (err) {
       toast.error("Failed to update role. Please try again.");
       console.error(err);
@@ -132,10 +117,7 @@ export default function SelectRolePage() {
             </p>
             <div className="flex items-center justify-center gap-2 text-agri-green font-semibold">
               {selectedRole === "FARMER" && !isLoading ? (
-                <>
-                  <span>Continue</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
+                <><span>Continue</span><ArrowRight className="w-4 h-4" /></>
               ) : selectedRole === "FARMER" && isLoading ? (
                 <Loader className="w-4 h-4 animate-spin" />
               ) : (
@@ -167,10 +149,7 @@ export default function SelectRolePage() {
             </p>
             <div className="flex items-center justify-center gap-2 text-blue-600 font-semibold">
               {selectedRole === "BUYER" && !isLoading ? (
-                <>
-                  <span>Continue</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
+                <><span>Continue</span><ArrowRight className="w-4 h-4" /></>
               ) : selectedRole === "BUYER" && isLoading ? (
                 <Loader className="w-4 h-4 animate-spin" />
               ) : (
@@ -190,5 +169,18 @@ export default function SelectRolePage() {
         </div>
       </motion.div>
     </main>
+  );
+}
+
+// Wrap in Suspense — required by Next.js 14 whenever useSearchParams() is used
+export default function SelectRolePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-agri-cream dark:bg-zinc-950">
+        <Loader className="w-8 h-8 animate-spin text-agri-green" />
+      </div>
+    }>
+      <SelectRoleContent />
+    </Suspense>
   );
 }

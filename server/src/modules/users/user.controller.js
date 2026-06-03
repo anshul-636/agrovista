@@ -144,10 +144,11 @@ const uploadVerificationDocs = asyncHandler(async (req, res) => {
     res.json(new ApiResponse(200, result, 'Verification documents uploaded and request submitted'))
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/users/admin/email-verify?token=xxx
-// Public endpoint — called when admin clicks Approve/Reject in their email.
-// The token is a signed JWT (72h expiry) containing { farmerId, action }.
-// Returns a styled HTML page so the admin sees a result in their browser.
+//   APPROVE → immediately approves and shows result page (one click)
+//   REJECT  → shows a form so admin can type a rejection reason before submitting
+// ─────────────────────────────────────────────────────────────────────────────
 const emailVerificationAction = asyncHandler(async (req, res) => {
     const { token } = req.query
     if (!token) return res.status(400).send(htmlResult('error', 'Missing token.'))
@@ -170,40 +171,154 @@ const emailVerificationAction = asyncHandler(async (req, res) => {
     const farmer = await require('../../models/User').findById(farmerId)
     if (!farmer) return res.status(404).send(htmlResult('error', 'Farmer not found.'))
 
+    // Already processed — show informational page, do nothing
     if (farmer.verificationStatus !== 'PENDING') {
         const alreadyMsg = farmer.verificationStatus === 'VERIFIED'
-            ? `${farmer.name} is already verified.`
-            : `This request was already processed (status: ${farmer.verificationStatus}).`
-        return res.status(400).send(htmlResult('info', alreadyMsg))
+            ? `✅ ${farmer.name} is already verified. No action needed.`
+            : `ℹ️ This request was already processed (status: ${farmer.verificationStatus}).`
+        return res.status(200).send(htmlResult('info', alreadyMsg))
     }
 
-    farmer.verificationStatus = action === 'APPROVE' ? 'VERIFIED' : 'REJECTED'
-    farmer.verificationNote   = action === 'APPROVE' ? 'Approved via admin email.' : 'Rejected via admin email.'
-    if (action === 'APPROVE') farmer.verifiedAt = new Date()
+    // APPROVE — one-click, process immediately
+    if (action === 'APPROVE') {
+        farmer.verificationStatus = 'VERIFIED'
+        farmer.verificationNote   = 'Approved via admin email.'
+        farmer.verifiedAt         = new Date()
+        await farmer.save()
+
+        try {
+            const { createNotification } = require('../notifications/notification.service')
+            await createNotification({
+                userId: farmerId,
+                type: 'VERIFICATION_UPDATE',
+                title: '✅ Verification Approved!',
+                body: 'Congratulations! Your farmer profile is now officially verified. A verified badge will appear on all your listings.'
+            })
+        } catch (err) {
+            console.error('Notification error:', err.message)
+        }
+
+        return res.send(htmlResult('approve', `✅ ${farmer.name} has been verified! They will receive an in-app notification.`))
+    }
+
+    // REJECT — show a form so admin can enter a rejection reason
+    return res.send(htmlRejectForm(token, farmer.name, farmer.email))
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/users/admin/email-verify
+// Handles the reject-reason form submission.
+// Body: { token, reason }
+// ─────────────────────────────────────────────────────────────────────────────
+const emailVerificationReject = asyncHandler(async (req, res) => {
+    const { token, reason } = req.body
+
+    if (!token) return res.status(400).send(htmlResult('error', 'Missing token.'))
+
+    let payload
+    try {
+        payload = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'fallback_secret')
+    } catch (err) {
+        const msg = err.name === 'TokenExpiredError'
+            ? 'This link has expired (links are valid for 72 hours).'
+            : 'Invalid or tampered token.'
+        return res.status(400).send(htmlResult('error', msg))
+    }
+
+    const { farmerId, action } = payload
+    if (!farmerId || action !== 'REJECT') {
+        return res.status(400).send(htmlResult('error', 'Invalid token for this action.'))
+    }
+
+    const farmer = await require('../../models/User').findById(farmerId)
+    if (!farmer) return res.status(404).send(htmlResult('error', 'Farmer not found.'))
+
+    if (farmer.verificationStatus !== 'PENDING') {
+        return res.status(200).send(htmlResult('info', `ℹ️ This request was already processed (status: ${farmer.verificationStatus}).`))
+    }
+
+    const rejectionReason = (reason || '').trim() || 'Documents could not be verified. Please re-submit with valid documents.'
+
+    farmer.verificationStatus = 'REJECTED'
+    farmer.verificationNote   = rejectionReason
     await farmer.save()
 
-    // In-app notification to farmer
     try {
         const { createNotification } = require('../notifications/notification.service')
         await createNotification({
             userId: farmerId,
             type: 'VERIFICATION_UPDATE',
-            title: action === 'APPROVE' ? '✅ Verification Approved!' : '❌ Verification Rejected',
-            body: action === 'APPROVE'
-                ? 'Congratulations! Your farmer profile is now officially verified. A badge will appear on all your listings.'
-                : 'Your verification request was not approved. Please re-submit with correct documents.'
+            title: '❌ Verification Rejected',
+            body: `Your verification request was not approved. Reason: ${rejectionReason}`
         })
     } catch (err) {
-        console.error('Notification error after email verify:', err.message)
+        console.error('Notification error:', err.message)
     }
 
-    const successMsg = action === 'APPROVE'
-        ? `✅ ${farmer.name} has been verified successfully! They will receive an in-app notification.`
-        : `❌ ${farmer.name}'s verification request has been rejected. They will receive an in-app notification.`
-
-    return res.send(htmlResult(action === 'APPROVE' ? 'approve' : 'reject', successMsg))
+    return res.send(htmlResult('reject', `❌ ${farmer.name}'s request has been rejected. They have been notified with your reason.`))
 })
 
+
+function htmlRejectForm(token, farmerName, farmerEmail) {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Reject Verification — AgroVista</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f7f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,80,40,.10); max-width: 520px; width: 100%; overflow: hidden; }
+    .header { background: linear-gradient(135deg,#7f1d1d,#991b1b); padding: 24px 32px; }
+    .header h1 { color: #fff; font-size: 20px; font-weight: 800; }
+    .header p { color: #fca5a5; font-size: 13px; margin-top: 4px; }
+    .body { padding: 28px 32px; }
+    .farmer-info { background: #fff1f2; border-radius: 10px; padding: 14px 16px; margin-bottom: 22px; }
+    .farmer-info p { font-size: 13px; color: #7f1d1d; margin-bottom: 4px; }
+    .farmer-info strong { font-size: 15px; color: #991b1b; }
+    label { display: block; font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 8px; }
+    textarea { width: 100%; border: 2px solid #fca5a5; border-radius: 10px; padding: 12px 14px; font-size: 14px; color: #1f2937; resize: vertical; min-height: 120px; outline: none; font-family: inherit; transition: border-color .2s; }
+    textarea:focus { border-color: #ef4444; }
+    .hint { font-size: 11px; color: #9ca3af; margin-top: 6px; margin-bottom: 20px; }
+    button { width: 100%; background: #dc2626; color: #fff; border: none; border-radius: 10px; padding: 14px; font-size: 15px; font-weight: 800; cursor: pointer; transition: background .2s; }
+    button:hover { background: #b91c1c; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .footer { background: #fef2f2; padding: 14px 32px; text-align: center; font-size: 11px; color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>❌ Reject Verification Request</h1>
+      <p>AgroVista Admin Panel</p>
+    </div>
+    <div class="body">
+      <div class="farmer-info">
+        <p>Farmer</p>
+        <strong>${farmerName}</strong>
+        <p style="margin-top:6px;font-size:12px;">${farmerEmail}</p>
+      </div>
+      <form method="POST" action="" onsubmit="handleSubmit(event)">
+        <input type="hidden" name="token" value="${token}">
+        <label for="reason">Rejection Reason <span style="color:#ef4444">*</span></label>
+        <textarea id="reason" name="reason" placeholder="e.g. Documents are blurry and unreadable. Please re-submit clear photos of your Aadhaar card and land records..." required></textarea>
+        <p class="hint">This message will be shown directly to the farmer on their profile page.</p>
+        <button type="submit" id="submitBtn">❌ Confirm Rejection</button>
+      </form>
+    </div>
+    <div class="footer">The farmer will receive an in-app notification with your reason.</div>
+  </div>
+  <script>
+    function handleSubmit(e) {
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Processing…';
+    }
+  </script>
+</body>
+</html>`
+}
 
 function htmlResult(type, message) {
     const colors = {
@@ -254,6 +369,7 @@ module.exports = {
     submitVerificationRequest,
     uploadVerificationDocs,
     emailVerificationAction,
+    emailVerificationReject,
     listPendingVerifications,
     processVerification,
     deleteAccount
