@@ -119,7 +119,17 @@ api.interceptors.response.use(
       config._retry = true;
 
       try {
-        refreshPromise = refreshPromise || axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
+        // Send refreshToken in request body as cross-origin fallback.
+        // Cookies are blocked by SameSite policy when frontend and backend
+        // are on different domains (Vercel + Render). Body always works.
+        const storedRefreshToken = typeof window !== "undefined"
+          ? localStorage.getItem("agrovista_refresh_token")
+          : null;
+        refreshPromise = refreshPromise || axios.post(
+          `${API_URL}/auth/refresh`,
+          { refreshToken: storedRefreshToken },
+          { withCredentials: true }
+        );
         const refreshRes = await refreshPromise;
         refreshPromise = null;
 
@@ -161,10 +171,15 @@ export const apiService = {
     try {
       const res = await api.post("/auth/login", credentials);
       const backendData = res.data;
+      // Store refreshToken in localStorage — cookie alone fails cross-origin (Vercel+Render)
+      if (backendData.data?.refreshToken && typeof window !== "undefined") {
+        localStorage.setItem("agrovista_refresh_token", backendData.data.refreshToken);
+      }
       return {
         success: backendData.success,
         user: backendData.data?.user,
-        token: backendData.data?.accessToken
+        token: backendData.data?.accessToken,
+        refreshToken: backendData.data?.refreshToken,
       };
     } catch (e) {
       throw e;
@@ -175,10 +190,14 @@ export const apiService = {
     try {
       const res = await api.post("/auth/register", userData);
       const backendData = res.data;
+      if (backendData.data?.refreshToken && typeof window !== "undefined") {
+        localStorage.setItem("agrovista_refresh_token", backendData.data.refreshToken);
+      }
       return {
         success: backendData.success,
         user: backendData.data?.user,
-        token: backendData.data?.accessToken
+        token: backendData.data?.accessToken,
+        refreshToken: backendData.data?.refreshToken,
       };
     } catch (e) {
       throw e;

@@ -6,7 +6,11 @@ const { registerUser, loginUser, refreshAccessToken, generateTokens } = require(
 const COOKIE_OPTIONS = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    // 'strict' blocks cross-origin cookies — frontend and backend are on different
+    // domains (Vercel vs Render), so the browser silently drops the cookie.
+    // 'none' allows cross-origin but REQUIRES secure:true (HTTPS), which Render provides.
+    // In local dev we use 'lax' since both run on localhost.
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000   // 7 days
 }
 
@@ -34,7 +38,7 @@ const register = asyncHandler(async (req, res) => {
     res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS)
 
     res.status(201).json(
-        new ApiResponse(201, { user: user.toJSON(), accessToken }, 'Account created successfully')
+        new ApiResponse(201, { user: user.toJSON(), accessToken, refreshToken }, 'Account created successfully')
     )
 })
 
@@ -49,13 +53,17 @@ const login = asyncHandler(async (req, res) => {
 
     res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS)
 
+    // Also return refreshToken in body — cookie alone fails on cross-origin deploys
+    // (e.g. Vercel frontend + Render backend) due to SameSite restrictions.
+    // Client stores it in localStorage as a reliable fallback.
     res.json(
-        new ApiResponse(200, { user, accessToken }, 'Login successful')
+        new ApiResponse(200, { user, accessToken, refreshToken }, 'Login successful')
     )
 })
 
 const refresh = asyncHandler(async (req, res) => {
-    const { refreshToken } = req.cookies
+    // Try cookie first (same-origin / local dev), then body (cross-origin fallback)
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken
 
     const { accessToken, newRefreshToken } = await refreshAccessToken(refreshToken)
 

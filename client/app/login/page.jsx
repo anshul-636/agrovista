@@ -49,7 +49,7 @@ export default function LoginPage() {
     try {
       const res = await apiService.login({ email, password });
       if (res.success) {
-        login(res.user, res.token);
+        login(res.user, res.token, res.refreshToken);
         toast.success(`Welcome back, ${res.user.name}!`);
         const redirectUrl = res.user.role === "FARMER" ? "/dashboard/farmer" : "/dashboard/buyer";
         router.push(redirectUrl);

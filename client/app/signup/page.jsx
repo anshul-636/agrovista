@@ -73,7 +73,7 @@ export default function SignupPage() {
     try {
       const res = await apiService.signup({ name, email, password, role, location, phone });
       if (res.success) {
-        login(res.user, res.token);
+        login(res.user, res.token, res.refreshToken);
         toast.success(`Account created! Welcome, ${res.user.name}.`);
         const redirectUrl = res.user.role === "FARMER" ? "/dashboard/farmer" : "/dashboard/buyer";
         router.push(redirectUrl);
