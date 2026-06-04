@@ -10,12 +10,16 @@ const emitOrderUpdate = async (order, extra = {}) => {
         const payload = {
             orderId: order._id.toString(),
             status: order.status,
+            timeline: order.timeline || [],
             buyerId: order.buyer.toString(),
             farmerId: order.farmer.toString(),
             productId: order.product.toString(),
             ...extra
         }
 
+        // Emit to the shared chat room (both parties are joined there)
+        io.to('chat:' + order._id.toString()).emit('order:updated', payload)
+        // Also emit to individual user rooms in case someone isn't in the chat room yet
         io.to('user:' + order.buyer.toString()).emit('order:updated', payload)
         io.to('user:' + order.farmer.toString()).emit('order:updated', payload)
     } catch (err) {
@@ -143,15 +147,16 @@ const getBuyerOrders = async (buyerId) => {
         .populate('farmer', 'name avatar')
         .sort({ createdAt: -1 })
 
-    // Find all farmers this buyer has already reviewed so the UI can
-    // permanently hide the "Leave Review" button after a refresh.
-    const existingReviews = await Review.find({ giver: buyerId }).select('receiver').lean()
-    const reviewedFarmerIds = new Set(existingReviews.map((r) => r.receiver.toString()))
+    // Find all orders this buyer has already reviewed so the UI can
+    // permanently hide the "Leave Review" button for each specific order.
+    const existingReviews = await Review.find({ giver: buyerId }).select('order').lean()
+    const reviewedOrderIds = new Set(existingReviews.map((r) => r.order?.toString()).filter(Boolean))
 
-    // Attach a hasReview flag to each plain order object
+    // Attach a hasReview flag per order (not per farmer), so a buyer with
+    // multiple orders from the same farmer can review each one independently.
     return orders.map((order) => {
         const obj = order.toObject()
-        obj.hasReview = reviewedFarmerIds.has(order.farmer._id.toString())
+        obj.hasReview = reviewedOrderIds.has(order._id.toString())
         return obj
     })
 }
@@ -190,7 +195,14 @@ const getOrderById = async (orderId, userId) => {
         throw new ApiError(403, 'You do not have access to this order')
     }
 
-    return order
+    // Attach hasReview flag so the buyer's review form knows if already submitted
+    const obj = order.toObject()
+    if (isBuyer) {
+        const existingReview = await Review.findOne({ giver: userId, order: orderId }).lean()
+        obj.hasReview = !!existingReview
+    }
+
+    return obj
 }
 
 // ──────────────────────────────────────────────

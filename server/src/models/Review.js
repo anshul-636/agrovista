@@ -12,6 +12,15 @@ const reviewSchema = new mongoose.Schema(
             ref: 'User',
             required: true
         },
+        // Each review is tied to the specific order it was written for.
+        // This allows one review per order (not per farmer), so a buyer
+        // who has multiple orders from the same farmer can leave a review
+        // for each one independently.
+        order: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Order',
+            required: true
+        },
         rating: {
             type: Number,
             required: true,
@@ -25,8 +34,12 @@ const reviewSchema = new mongoose.Schema(
     }
 )
 
-// Index for fast lookups (non-unique — multiple reviews per buyer-farmer pair are allowed)
-reviewSchema.index({ giver: 1, receiver: 1 })
+// One review per order — prevents duplicate submissions for the same order
+// while allowing the same buyer to review the same farmer across different orders.
+reviewSchema.index({ giver: 1, order: 1 }, { unique: true })
+
+// Fast lookup of all reviews for a farmer
+reviewSchema.index({ receiver: 1 })
 
 const Review = mongoose.model('Review', reviewSchema)
 module.exports = Review

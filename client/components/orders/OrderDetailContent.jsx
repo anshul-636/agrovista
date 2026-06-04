@@ -115,6 +115,12 @@ export default function OrderDetailContent() {
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
 
+  // Sync reviewSubmitted with server-side hasReview flag so the form
+  // stays hidden across refreshes once a review for this order was submitted.
+  useEffect(() => {
+    if (order?.hasReview) setReviewSubmitted(true);
+  }, [order?.hasReview]);
+
   const socketRef     = useRef(null);
   const chatScrollRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -189,12 +195,36 @@ export default function OrderDetailContent() {
       if (data?.orderId === id) setChatMessages([]);
     };
 
+    // Listen for status changes pushed by the OTHER party so both
+    // buyer and farmer see updates without refreshing the page.
+    const handleOrderUpdated = (data) => {
+      if (!data || data.orderId !== id) return;
+      if (data.status) {
+        setStatus(data.status);
+        // Notify the other party in real time
+        const statusLabels = {
+          ACCEPTED: "Order accepted by farmer",
+          PACKED: "Order packed & ready",
+          DISPATCHED: "Order dispatched",
+          DELIVERED: "Delivery confirmed — funds released",
+          CANCELLED: "Order cancelled",
+        };
+        const label = statusLabels[data.status];
+        if (label) toast.info(label, { icon: "📦" });
+      }
+      if (data.timeline) setTimeline(data.timeline);
+      // Re-fetch for full order data (timeline details, etc.)
+      queryClient.invalidateQueries(["order", id]);
+    };
+
     socket.on("chat:message", handleMsg);
     socket.on("chat:cleared", handleClear);
+    socket.on("order:updated", handleOrderUpdated);
     const t = setTimeout(() => setOnlineStatus("Active 5m ago"), 45000);
     return () => {
       socket.off("chat:message", handleMsg);
       socket.off("chat:cleared", handleClear);
+      socket.off("order:updated", handleOrderUpdated);
       clearTimeout(t);
     };
   }, [id, currentUserId, mounted]);
@@ -296,7 +326,8 @@ export default function OrderDetailContent() {
     setReviewLoading(true);
     try {
       const farmerId = order?.farmerId || order?.farmer?._id || order?.farmer;
-      await apiService.submitReview(farmerId, { rating: reviewRating, comment: reviewComment });
+      const orderId = order?._id || order?.id;
+      await apiService.submitReview(farmerId, { rating: reviewRating, comment: reviewComment, orderId });
       setReviewSubmitted(true);
       toast.success("Review submitted! Thank you.");
       queryClient.invalidateQueries(["order", id]);

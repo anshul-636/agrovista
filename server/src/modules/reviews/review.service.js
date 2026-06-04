@@ -3,12 +3,14 @@ const Order = require('../../models/Order')
 const ApiError = require('../../utils/ApiError')
 
 
-const submitReview = async (buyerId, farmerId, { rating, comment }) => {
+const submitReview = async (buyerId, farmerId, { rating, comment, orderId }) => {
     if (!rating) throw new ApiError(400, 'Rating is required')
     if (rating < 1 || rating > 5) throw new ApiError(400, 'Rating must be between 1 and 5')
+    if (!orderId) throw new ApiError(400, 'Order ID is required')
 
-    // Verify buyer has a completed order from this farmer
+    // Verify this specific order belongs to the buyer, is from this farmer, and is DELIVERED
     const deliveredOrder = await Order.findOne({
+        _id: orderId,
         buyer: buyerId,
         farmer: farmerId,
         status: 'DELIVERED'
@@ -21,10 +23,16 @@ const submitReview = async (buyerId, farmerId, { rating, comment }) => {
         )
     }
 
-    // Always create a new review — each submission is a separate entry
+    // Check if a review for THIS specific order already exists
+    const existing = await Review.findOne({ giver: buyerId, order: orderId })
+    if (existing) {
+        throw new ApiError(409, 'You have already reviewed this order')
+    }
+
     const review = await Review.create({
         giver: buyerId,
         receiver: farmerId,
+        order: orderId,
         rating: parseInt(rating),
         comment: comment || ''
     })

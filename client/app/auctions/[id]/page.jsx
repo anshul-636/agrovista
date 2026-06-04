@@ -195,6 +195,31 @@ export default function AuctionRoomPage() {
     };
   }, [id, currentBid, canBid, router, queryClient]);
 
+  // ── Always-on socket: join room even for UPCOMING auctions ───────────────────
+  // The main socket effect above exits early when canBid=false, so UPCOMING
+  // viewers never join the auction room and miss the "auction:started" event
+  // emitted by the cron job. This effect keeps everyone joined and refreshes
+  // the query when the auction transitions from UPCOMING → LIVE.
+  useEffect(() => {
+    if (!id) return;
+    const socket = getSocket();
+    if (!socket) return;
+    // Join the room unconditionally (safe to call even if already joined)
+    socket.emit("join:auction", { auctionId: id });
+
+    const handleStarted = (data) => {
+      if (data?.auctionId !== id) return;
+      // Refresh the auction data so the phase flips to "live"
+      queryClient.invalidateQueries(["auction", id]);
+      toast.success("Auction is now LIVE! Bidding is open.", { icon: "🔴", duration: 5000 });
+    };
+
+    socket.on("auction:started", handleStarted);
+    return () => {
+      socket.off("auction:started", handleStarted);
+    };
+  }, [id, queryClient]);
+
   // ── Countdown ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!auction) return;

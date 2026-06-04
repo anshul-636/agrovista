@@ -56,7 +56,8 @@ function ReviewModal({ order, onClose, onSubmitted }) {
     setLoading(true);
     try {
       const farmerId = order.farmerId || order.farmer?._id || order.farmer;
-      await apiService.submitReview(farmerId, { rating, comment });
+      const orderId = order._id || order.id;
+      await apiService.submitReview(farmerId, { rating, comment, orderId });
       toast.success("Review submitted! Thank you.");
       onSubmitted(order.id);
       onClose();
