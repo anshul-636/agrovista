@@ -469,17 +469,32 @@ export default function AuctionsListingPage() {
             </p>
             {/* ── Farmer tab switcher ── */}
             {isFarmer && (
-              <div className="flex mt-3 bg-agri-green/8 dark:bg-zinc-800 rounded-2xl p-1 gap-1 w-fit border border-agri-green/10">
+              <div className="flex mt-4 gap-3">
                 <button
                   onClick={() => { setFarmerTab("mine"); setSearchQuery(""); setFilterPhase("all"); }}
-                  className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${ farmerTab === "mine" ? "bg-agri-green text-white shadow" : "text-agri-brown hover:text-agri-green" }`}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black border-2 transition-all shadow-sm ${
+                    farmerTab === "mine"
+                      ? "bg-agri-green text-white border-agri-green shadow-agri-green/30"
+                      : "bg-white dark:bg-zinc-900 text-agri-brown border-agri-green/20 hover:border-agri-green hover:text-agri-green"
+                  }`}
                 >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                   My Auctions
+                  {myAuctionsRes?.data?.length > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${farmerTab === "mine" ? "bg-white/20 text-white" : "bg-agri-green/10 text-agri-green"}`}>
+                      {myAuctionsRes.data.length}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => { setFarmerTab("all"); setSearchQuery(""); setFilterPhase("all"); }}
-                  className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${ farmerTab === "all" ? "bg-agri-green text-white shadow" : "text-agri-brown hover:text-agri-green" }`}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black border-2 transition-all shadow-sm ${
+                    farmerTab === "all"
+                      ? "bg-agri-green-dark text-white border-agri-green-dark"
+                      : "bg-white dark:bg-zinc-900 text-agri-brown border-agri-green/20 hover:border-agri-green hover:text-agri-green"
+                  }`}
                 >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 004 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" /></svg>
                   All Auctions
                 </button>
               </div>
@@ -558,6 +573,107 @@ export default function AuctionsListingPage() {
           </div>
         </div>
 
+        {/* ── MY AUCTIONS: Table/list view (farmer's own listings) ── */}
+        {isFarmer && farmerTab === "mine" && (
+          <div className="space-y-4">
+            {isLoading ? (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-20 rounded-2xl bg-gray-200 dark:bg-zinc-800 animate-pulse" />
+                ))}
+              </div>
+            ) : allAuctions.length === 0 ? (
+              <div className="text-center py-20 bg-white/40 dark:bg-black/10 rounded-3xl border border-dashed border-agri-green/10">
+                <div className="w-16 h-16 rounded-2xl bg-agri-green/10 flex items-center justify-center mx-auto mb-4">
+                  <Gavel className="w-8 h-8 text-agri-green/40" />
+                </div>
+                <h3 className="text-base font-bold text-agri-green-dark dark:text-white">No auctions created yet</h3>
+                <p className="text-xs text-agri-brown mt-1.5 mb-4">Launch your first auction to start selling crops at market price.</p>
+                <Link href="/auctions/create">
+                  <Button variant="primary" className="rounded-xl text-xs">
+                    <PlusCircle className="w-3.5 h-3.5 mr-1.5" /> Launch New Auction
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-agri-green/10 overflow-hidden shadow-sm">
+                {/* Table header */}
+                <div className="grid grid-cols-12 gap-4 px-5 py-3 bg-agri-green/5 border-b border-agri-green/10 text-[10px] font-black text-agri-brown uppercase tracking-wider">
+                  <div className="col-span-4">Product</div>
+                  <div className="col-span-2 text-center">Status</div>
+                  <div className="col-span-2 text-center">Bid</div>
+                  <div className="col-span-2 text-center">End Time</div>
+                  <div className="col-span-2 text-center">Actions</div>
+                </div>
+                {/* Rows */}
+                {allAuctions.map((a) => {
+                  const phase = getAuctionPhase(a);
+                  const phaseColor = phase === "live" ? "bg-red-500/10 text-red-600 border-red-200" : phase === "upcoming" ? "bg-amber-500/10 text-amber-700 border-amber-200" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border-zinc-200 dark:border-zinc-700";
+                  const phaseLabel = phase === "live" ? "🔴 Live" : phase === "upcoming" ? "⏰ Upcoming" : "✅ Ended";
+                  return (
+                    <div key={a.id} className="grid grid-cols-12 gap-4 px-5 py-4 border-b border-agri-green/5 last:border-0 hover:bg-agri-green/2 transition items-center">
+                      {/* Product */}
+                      <div className="col-span-4 flex items-center gap-3 min-w-0">
+                        <img
+                          src={a.image || a.images?.[0] || "https://images.unsplash.com/photo-1574943320219-553eb213f72d?auto=format&fit=crop&q=80&w=100"}
+                          alt={a.productName}
+                          className="w-10 h-10 rounded-xl object-cover shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-agri-green-dark dark:text-agri-green-light truncate">{a.productName}</p>
+                          <p className="text-[10px] text-agri-brown">{a.quantity} {a.unit} · {a.category}</p>
+                        </div>
+                      </div>
+                      {/* Status */}
+                      <div className="col-span-2 flex justify-center">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${phaseColor}`}>{phaseLabel}</span>
+                      </div>
+                      {/* Bid */}
+                      <div className="col-span-2 text-center">
+                        <p className="text-sm font-black text-agri-green">₹{a.currentBid || a.startingPrice}</p>
+                        <p className="text-[9px] text-agri-brown">/ {a.unit}</p>
+                      </div>
+                      {/* End time */}
+                      <div className="col-span-2 text-center">
+                        <p className="text-[11px] font-semibold text-agri-brown">
+                          {new Date(a.endTime).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        </p>
+                        <p className="text-[10px] text-agri-brown/60">
+                          {new Date(a.endTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </div>
+                      {/* Actions */}
+                      <div className="col-span-2 flex items-center justify-center gap-2">
+                        <Link href={`/auctions/${a.id}`}>
+                          <button className="px-3 py-1.5 rounded-xl bg-agri-green/10 text-agri-green text-[10px] font-black hover:bg-agri-green hover:text-white transition">
+                            View
+                          </button>
+                        </Link>
+                        {(phase === "upcoming" || phase === "past") && (
+                          <button
+                            onClick={() => setDeleteTarget(a)}
+                            className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black hover:bg-red-500 hover:text-white transition"
+                          >
+                            Delete
+                          </button>
+                        )}
+                        {phase === "live" && (
+                          <span className="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 text-[10px] font-black cursor-not-allowed" title="Cannot delete live auction">
+                            🔒 Live
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ALL AUCTIONS: Card grid view ─────────────────────────────────── */}
+        {(!isFarmer || farmerTab === "all") && (
+        <>
         {/* ── Content ─────────────────────────────────────────────── */}
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -698,6 +814,8 @@ export default function AuctionsListingPage() {
               </>
             )}
           </div>
+        )}
+        </> 
         )}
       </main>
     </div>

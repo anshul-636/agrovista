@@ -141,7 +141,20 @@ const getAuctionById = async (auctionId) => {
         .sort({ createdAt: -1 })
         .limit(20)
 
-    return { ...auction.toJSON(), bids }
+    // Explicitly map bids to plain objects with bidderName at top level
+    // so the frontend can reliably read it without traversing nested objects
+    const plainBids = bids.map(b => {
+        const plain = b.toJSON ? b.toJSON() : { ...b }
+        return {
+            ...plain,
+            bidderName: plain.bidder?.name || plain.bidderName || 'Unknown',
+            bidderAvatar: plain.bidder?.avatar || plain.bidderAvatar || null,
+            // always expose createdAt as timestamp for frontend
+            timestamp: plain.createdAt || plain.timestamp || new Date().toISOString(),
+        }
+    })
+
+    return { ...auction.toJSON(), bids: plainBids }
 }
 
 // ──────────────────────────────────────────────

@@ -100,16 +100,19 @@ export default function AuctionRoomPage() {
 
       // ── Seed winner name from API data when auction is already ENDED ──
       if (auctionPhase === "past") {
-        // Priority: 1) winner.name from populated object, 2) winnerName mapped by normalizer,
-        // 3) top bid's bidder name (most reliable — always present if any bid was placed),
-        // 4) No bidders fallback
+        // The bids array is always populated with bidder.name from the server.
+        // Use it as the PRIMARY source — sort by amount desc, take top bidder name.
+        // This is the most reliable since populate('winner') can sometimes return
+        // just an ObjectId string if the cron set it after populate ran.
+        const sortedBids = auction.bids && auction.bids.length > 0
+          ? [...auction.bids].sort((a, b) => Number(b.amount) - Number(a.amount))
+          : [];
+        const topBidderName = sortedBids[0]?.bidderName || sortedBids[0]?.bidder?.name || null;
+        // Fallback chain: top bid name → populated winner object name → winnerName field
         const winnerFromObj = typeof auction.winner === "object" && auction.winner !== null
           ? (auction.winner.name || null)
           : null;
-        const topBidName = auction.bids && auction.bids.length > 0
-          ? ([...auction.bids].sort((a, b) => b.amount - a.amount)[0]?.bidderName || null)
-          : null;
-        const resolvedWinner = winnerFromObj || auction.winnerName || topBidName || null;
+        const resolvedWinner = topBidderName || winnerFromObj || auction.winnerName || null;
         setWinner(resolvedWinner || "No bidders");
       }
     }
