@@ -13,7 +13,8 @@ const emitOrderUpdate = async (order, extra = {}) => {
             timeline: order.timeline || [],
             buyerId: order.buyer.toString(),
             farmerId: order.farmer.toString(),
-            productId: order.product.toString(),
+            // product is null for auction orders — guard to avoid TypeError crash
+            productId: order.product ? order.product.toString() : null,
             ...extra
         }
 
@@ -236,18 +237,20 @@ const updateOrderStatus = async (orderId, farmerId, newStatus) => {
     try {
         const { createNotification } = require('../notifications/notification.service')
         
+        const productLabel = order.product?.name || order.auctionProductName || 'your product'
         await createNotification({
             userId: order.buyer._id,
             type: 'ORDER_UPDATE',
             title: `Order ${newStatus}`,
-            body: `Your order for ${order.product.name} is now ${newStatus}.`
+            body: `Your order for ${productLabel} is now ${newStatus}.`
         })
     } catch (err) {
         console.error('Notification failed:', err.message)
     }
 
+    const productLabel = order.product?.name || order.auctionProductName || 'your product'
     await emitOrderUpdate(order, {
-        productName: order.product.name,
+        productName: productLabel,
         source: 'farmer-status'
     })
 
@@ -292,18 +295,20 @@ const verifyOrderDelivery = async (orderId, buyerId) => {
     try {
         const { createNotification } = require('../notifications/notification.service')
         
+        const productLabel = order.product?.name || order.auctionProductName || 'your product'
         await createNotification({
             userId: order.farmer._id,
             type: 'ORDER_DELIVERED',
             title: 'Action Completed: Delivery Verified',
-            body: `Buyer has verified delivery for ${order.product.name}. Funds released!`
+            body: `Buyer has verified delivery for ${productLabel}. Funds released!`
         })
     } catch (err) {
         console.error('Notification failed:', err.message)
     }
 
+    const productLabel2 = order.product?.name || order.auctionProductName || 'your product'
     await emitOrderUpdate(order, {
-        productName: order.product.name,
+        productName: productLabel2,
         source: 'buyer-verify'
     })
 

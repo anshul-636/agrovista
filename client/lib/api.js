@@ -569,9 +569,9 @@ export const apiService = {
   },
 
   // Submit a review for a farmer
-  submitReview: async (farmerId, { rating, comment }) => {
+  submitReview: async (farmerId, { rating, comment, orderId }) => {
     try {
-      const res = await api.post(`/reviews/${farmerId}`, { rating, comment });
+      const res = await api.post(`/reviews/${farmerId}`, { rating, comment, orderId });
       const payload = unwrapData(res);
       return { success: true, data: payload };
     } catch (e) {

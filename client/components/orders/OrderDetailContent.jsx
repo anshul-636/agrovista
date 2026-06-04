@@ -115,12 +115,7 @@ export default function OrderDetailContent() {
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
 
-  // Sync reviewSubmitted with server-side hasReview flag so the form
-  // stays hidden across refreshes once a review for this order was submitted.
-  useEffect(() => {
-    if (order?.hasReview) setReviewSubmitted(true);
-  }, [order?.hasReview]);
-
+  
   const socketRef     = useRef(null);
   const chatScrollRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -140,7 +135,11 @@ export default function OrderDetailContent() {
   const chatLocked  = isDelivered || isCancelled;
 
   useEffect(() => {
-    if (order) { setStatus(order.status); setTimeline(order.timeline || []); }
+    if (order) { 
+      setStatus(order.status); 
+      setTimeline(order.timeline || []);
+      if(order.hasReview) setReviewSubmitted(true);
+     }
   }, [order]);
 
   // Load chat history
