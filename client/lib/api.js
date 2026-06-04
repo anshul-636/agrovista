@@ -220,6 +220,16 @@ export const apiService = {
     }
   },
 
+  // Get fresh current-user data from server (createdAt, walletBalance, etc.)
+  getMe: async () => {
+    try {
+      const res = await api.get("/auth/me");
+      return { success: true, data: res.data?.data || res.data };
+    } catch (e) {
+      throw e;
+    }
+  },
+
   // Products Operations
   getProducts: async (filters = {}) => {
     try {

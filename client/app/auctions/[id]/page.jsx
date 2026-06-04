@@ -94,9 +94,16 @@ export default function AuctionRoomPage() {
     if (auction) {
       setCurrentBid(auction.currentBid ?? auction.startingPrice ?? 0);
       setBidsList(auction.bids || []);
-      setIsExpired(auctionPhase === "past");
       setReserveMet(auction.reserveMet || false);
       setBuyNowActive(!!auction.buyNowPrice);
+      // Immediately guard the ref to prevent the countdown timer from overwriting the winner
+      if (auctionPhase === "past") {
+        isExpiredRef.current = true;
+        setIsExpired(true);
+      } else {
+        isExpiredRef.current = false;
+        setIsExpired(false);
+      }
 
       // ── Seed winner name from API data when auction is already ENDED ──
       if (auctionPhase === "past") {
@@ -203,11 +210,33 @@ export default function AuctionRoomPage() {
 
       if (endDiff <= 0) {
         if (!isExpiredRef.current) {
+          isExpiredRef.current = true; // Guard immediately so re-runs don't repeat this block
           setTimeLeft({ diff: 0, text: "Ended" });
           setIsExpired(true);
           socketRef.current?.emit("leave:auction", { auctionId: id });
-          if (bidsList.length > 0) {
-            const highBid = bidsList[0];
+
+          // IMPORTANT: Use auction.bids (from API, always populated on load) as the
+          // authoritative source. bidsList state may be empty due to React batching
+          // when the auction is already ENDED on page load (race condition).
+          const authoritiveBids = (() => {
+            // Prefer socket-accumulated bids if non-empty, else fall back to API bids
+            if (bidsList.length > 0) return bidsList;
+            if (auction?.bids?.length > 0) {
+              // Normalize server bid objects to match bidsList shape
+              return [...auction.bids]
+                .sort((a, b) => Number(b.amount) - Number(a.amount))
+                .map((b) => ({
+                  bidderName: b.bidderName || b.bidder?.name || "Bidder",
+                  amount: b.amount,
+                  isUser: false,
+                  timestamp: b.timestamp || b.createdAt
+                }));
+            }
+            return [];
+          })();
+
+          if (authoritiveBids.length > 0) {
+            const highBid = authoritiveBids[0];
             setWinner(highBid.bidderName);
             if (highBid.isUser || highBid.bidderName?.includes("You")) {
               confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });

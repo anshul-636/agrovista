@@ -196,12 +196,17 @@ function BuyerDashboardContent() {
     const refresh = () => {
       queryClient.invalidateQueries(["buyerOrders"]);
       queryClient.invalidateQueries(["orders", "BUYER"]);
+      queryClient.invalidateQueries(["buyerAuctions"]);
     };
     socket.on("order:updated", refresh);
     socket.on("order:new", refresh);
+    socket.on("auction:ended", refresh);
+    socket.on("auction:updated", refresh);
     return () => {
       socket.off("order:updated", refresh);
       socket.off("order:new", refresh);
+      socket.off("auction:ended", refresh);
+      socket.off("auction:updated", refresh);
     };
   }, [socket, queryClient]);
 
@@ -214,12 +219,14 @@ function BuyerDashboardContent() {
     queryKey: ["buyerOrders"],
     queryFn: () => apiService.getOrders("BUYER"),
     enabled: !!user && user.role === "BUYER",
+    refetchInterval: 15000, // poll every 15s so status always stays fresh
   });
 
   const { data: auctionsRes } = useQuery({
     queryKey: ["buyerAuctions"],
     queryFn: () => apiService.getAuctions(),
     enabled: !!user && user.role === "BUYER",
+    refetchInterval: 20000, // poll every 20s for auction status changes
   });
 
   const products = Array.isArray(productsRes?.data) ? productsRes.data : [];
@@ -227,14 +234,24 @@ function BuyerDashboardContent() {
   const auctions = Array.isArray(auctionsRes?.data) ? auctionsRes.data : [];
 
   // Auctions that have ENDED and the current user is the winner —
-  // filter to ones that don't already have a corresponding order paid.
+  // filter to ones that don't already have a corresponding order that is paid or placed.
   const wonAuctions = auctions.filter((auc) => {
     if (auc.status !== "ENDED") return false;
     const winnerId = typeof auc.winner === "object"
       ? (auc.winner?._id || auc.winner?.id)
       : auc.winner;
     const uid = user?._id || user?.id;
-    return winnerId && uid && String(winnerId) === String(uid);
+    if (!winnerId || !uid || String(winnerId) !== String(uid)) return false;
+
+    // Exclude if buyer already has a completed/paid order for this auction
+    const aucId = String(auc.id || auc._id);
+    const alreadyOrdered = orders.some((o) => {
+      const orderAucId = String(o.auctionId || "");
+      if (!orderAucId || orderAucId !== aucId) return false;
+      // Hide "Pay Now" once payment is done or COD order is placed
+      return o.paymentStatus === "Paid" || o.paymentMethod === "COD";
+    });
+    return !alreadyOrdered;
   });
 
   const confirmPurchaseMutation = useMutation({

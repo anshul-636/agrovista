@@ -21,18 +21,13 @@ const submitReview = async (buyerId, farmerId, { rating, comment }) => {
         )
     }
 
-    // upsert: update if they already reviewed, create if not
-    // The unique index on the model prevents duplicates at DB level too
-    const review = await Review.findOneAndUpdate(
-        { giver: buyerId, receiver: farmerId },
-        {
-            giver: buyerId,
-            receiver: farmerId,
-            rating: parseInt(rating),
-            comment: comment || ''
-        },
-        { upsert: true, new: true }
-    )
+    // Always create a new review — each submission is a separate entry
+    const review = await Review.create({
+        giver: buyerId,
+        receiver: farmerId,
+        rating: parseInt(rating),
+        comment: comment || ''
+    })
 
     await review.populate('giver', 'name avatar')
 

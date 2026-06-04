@@ -25,8 +25,8 @@ const reviewSchema = new mongoose.Schema(
     }
 )
 
-// One buyer can only review one farmer once
-reviewSchema.index({ giver: 1, receiver: 1 }, { unique: true })
+// Index for fast lookups (non-unique — multiple reviews per buyer-farmer pair are allowed)
+reviewSchema.index({ giver: 1, receiver: 1 })
 
 const Review = mongoose.model('Review', reviewSchema)
 module.exports = Review

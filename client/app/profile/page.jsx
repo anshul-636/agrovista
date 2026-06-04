@@ -603,9 +603,32 @@ export default function ProfilePage() {
   });
   const buyerOrders = ordersRes || [];
 
+  // Fetch fresh buyer profile data from server so createdAt and walletBalance
+  // are always current — localStorage can have stale/incomplete user objects
+  // especially for OAuth accounts or accounts created before these fields existed.
+  const { data: freshBuyerData } = useQuery({
+    queryKey: ["profileMe", userId],
+    queryFn:  () => apiService.getMe(),
+    enabled:  !isFarmer && !!userId,
+    select:   (res) => res?.data,
+  });
+  // Merge fresh server data into authStore so subsequent renders use up-to-date values
+  useEffect(() => {
+    if (!freshBuyerData || isFarmer) return;
+    updateProfile({
+      createdAt:     freshBuyerData.createdAt,
+      walletBalance: freshBuyerData.walletBalance ?? 0,
+    });
+  }, [freshBuyerData, isFarmer]);
+
+  // Effective user object: merged with fresh server data for display
+  const effectiveUser = (!isFarmer && freshBuyerData)
+    ? { ...user, createdAt: freshBuyerData.createdAt, walletBalance: freshBuyerData.walletBalance ?? user?.walletBalance ?? 0 }
+    : user;
+
   if (!user) return null;
 
-  const completion = isFarmer ? calcFarmerCompletion(user) : calcBuyerCompletion(user);
+  const completion = isFarmer ? calcFarmerCompletion(user) : calcBuyerCompletion(effectiveUser);
 
   // Derived farmer stats
   const farmerProductCount = farmerStats?.productCount ?? 0;
@@ -709,7 +732,7 @@ export default function ProfilePage() {
     statPills: [
       { icon: ShoppingBag, label: "Orders Placed",  value: buyerTotalOrders || "0",                   color: "border-agri-green/10 text-agri-green bg-agri-green/5" },
       { icon: CircleDollarSign, label: "Total Spent", value: buyerTotalSpent > 0 ? `₹${buyerTotalSpent.toLocaleString("en-IN")}` : "₹0", color: "border-agri-wheat/15 text-agri-wheat-dark bg-agri-wheat/5" },
-      { icon: Wallet,      label: "Wallet Balance", value: `₹${(user.walletBalance ?? 0).toLocaleString("en-IN")}`, color: "border-agri-brown/10 text-agri-brown bg-agri-brown/5" },
+      { icon: Wallet,      label: "Wallet Balance", value: `₹${(effectiveUser?.walletBalance ?? 0).toLocaleString("en-IN")}`, color: "border-agri-brown/10 text-agri-brown bg-agri-brown/5" },
     ],
   };
 
@@ -955,7 +978,7 @@ export default function ProfilePage() {
             <div className="lg:col-span-5">
               {isFarmer
                 ? <FarmerRightPanel user={user} liveStats={farmerStats} />
-                : <BuyerRightPanel  user={user} orders={buyerOrders} />
+                : <BuyerRightPanel  user={effectiveUser} orders={buyerOrders} />
               }
             </div>
 
