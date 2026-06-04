@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -23,7 +23,30 @@ import { useAuthStore } from "../../../store/authStore";
 import { apiService } from "../../../lib/api";
 import { toast } from "sonner";
 
+// ─── Loading skeleton (reused as Suspense fallback) ───────────────────────────
+function CheckoutSkeleton() {
+  return (
+    <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col">
+      <Header />
+      <div className="max-w-4xl mx-auto p-8 w-full space-y-6 animate-pulse flex-1">
+        <div className="h-8 w-48 bg-gray-200 dark:bg-zinc-800 rounded" />
+        <div className="h-96 bg-gray-200 dark:bg-zinc-800 rounded-3xl" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Default export — wraps content in Suspense ───────────────────────────────
 export default function AuctionCheckoutPage() {
+  return (
+    <Suspense fallback={<CheckoutSkeleton />}>
+      <AuctionCheckoutContent />
+    </Suspense>
+  );
+}
+
+// ─── Inner component — safe to call useSearchParams() here ───────────────────
+function AuctionCheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const auctionId = searchParams.get("auctionId");
@@ -67,15 +90,7 @@ export default function AuctionCheckoutPage() {
   }, [mounted, authLoading, auctionId, router]);
 
   if (!mounted || authLoading) {
-    return (
-      <div className="min-h-screen bg-agri-cream dark:bg-zinc-950 flex flex-col">
-        <Header />
-        <div className="max-w-4xl mx-auto p-8 w-full space-y-6 animate-pulse flex-1">
-          <div className="h-8 w-48 bg-gray-200 dark:bg-zinc-800 rounded" />
-          <div className="h-96 bg-gray-200 dark:bg-zinc-800 rounded-3xl" />
-        </div>
-      </div>
-    );
+    return <CheckoutSkeleton />;
   }
 
   const totalAmount = finalBid && quantity
