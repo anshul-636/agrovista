@@ -97,6 +97,21 @@ export default function AuctionRoomPage() {
       setIsExpired(auctionPhase === "past");
       setReserveMet(auction.reserveMet || false);
       setBuyNowActive(!!auction.buyNowPrice);
+
+      // ── Seed winner name from API data when auction is already ENDED ──
+      if (auctionPhase === "past") {
+        // Priority: 1) winner.name from populated object, 2) winnerName mapped by normalizer,
+        // 3) top bid's bidder name (most reliable — always present if any bid was placed),
+        // 4) No bidders fallback
+        const winnerFromObj = typeof auction.winner === "object" && auction.winner !== null
+          ? (auction.winner.name || null)
+          : null;
+        const topBidName = auction.bids && auction.bids.length > 0
+          ? ([...auction.bids].sort((a, b) => b.amount - a.amount)[0]?.bidderName || null)
+          : null;
+        const resolvedWinner = winnerFromObj || auction.winnerName || topBidName || null;
+        setWinner(resolvedWinner || "No bidders");
+      }
     }
   }, [auction, auctionPhase]);
 
@@ -373,17 +388,21 @@ export default function AuctionRoomPage() {
         </div>
 
         {/* ── Winner overlay ── */}
-        {isExpired && winner && (
+        {isExpired && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="p-6 bg-gradient-to-r from-agri-green-dark to-[#092B0F] border border-agri-green/20 rounded-3xl text-center text-white space-y-3 shadow-xl"
           >
-            <Trophy className="w-12 h-12 text-agri-wheat mx-auto animate-bounce" />
+            <Trophy className={`w-12 h-12 mx-auto animate-bounce ${winner && winner !== "No bidders" ? "text-agri-wheat" : "text-white/40"}`} />
             <h2 className="text-2xl font-black">Auction Closed!</h2>
-            <p className="text-sm font-semibold">
-              Winning Bidder: <span className="text-agri-wheat font-black uppercase">{winner}</span>
-            </p>
+            {winner && winner !== "No bidders" ? (
+              <p className="text-sm font-semibold">
+                Winning Bidder: <span className="text-agri-wheat font-black uppercase">{winner}</span>
+              </p>
+            ) : (
+              <p className="text-sm text-white/60 font-semibold">No bids were placed on this auction.</p>
+            )}
             <p className="text-xs text-white/60">
               Final price: ₹{currentBid}/kg
               {auction.reservePrice && !reserveMet && (
@@ -630,7 +649,7 @@ export default function AuctionRoomPage() {
                             )}
                           </span>
                           <span className="text-[9px] text-agri-brown font-semibold">
-                            {new Date(bid.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            {(() => { const d = new Date(bid.timestamp || bid.createdAt); return isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); })()}
                           </span>
                         </div>
                         <span className="font-black text-sm text-agri-green">₹{bid.amount}/kg</span>

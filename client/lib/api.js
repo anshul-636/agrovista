@@ -60,6 +60,17 @@ const normalizeAuction = (item) => {
     buyNowPrice: item.buyNowPrice ? Number(item.buyNowPrice) : null,
     minBidIncrement: Number(item.minBidIncrement || 1),
     reserveMet: Boolean(item.reserveMet),
+    // Preserve full winner object for ID check; also expose winnerName for display
+    winner: item.winner || null,
+    winnerName: (typeof item.winner === 'object' && item.winner !== null)
+      ? (item.winner.name || null)
+      : null,
+    // Normalize bids so timestamp always exists (server stores createdAt, socket sends timestamp)
+    bids: Array.isArray(item.bids) ? item.bids.map(b => ({
+      ...b,
+      bidderName: b.bidderName || b.bidder?.name || 'Unknown',
+      timestamp: b.timestamp || b.createdAt || new Date().toISOString(),
+    })) : [],
   };
 };
 
@@ -286,6 +297,20 @@ export const apiService = {
   getAuctions: async (filters = {}) => {
     try {
       const res = await api.get("/auctions", { params: filters });
+      const payload = unwrapData(res);
+      return {
+        success: true,
+        data: (Array.isArray(payload) ? payload : Array.isArray(payload?.auctions) ? payload.auctions : []).map(normalizeAuction)
+      };
+    } catch (e) {
+      throw e;
+    }
+  },
+
+  // Fetch only the logged-in farmer's own auctions
+  getFarmerAuctions: async () => {
+    try {
+      const res = await api.get("/auctions/farmer/mine");
       const payload = unwrapData(res);
       return {
         success: true,

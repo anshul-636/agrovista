@@ -355,11 +355,31 @@ export default function AuctionsListingPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterPhase, setFilterPhase] = useState("all"); // all | live | upcoming | past
+  // Farmers get a tab: "mine" = their listings, "all" = everyone's live auctions
+  const [farmerTab, setFarmerTab] = useState("mine");
 
-  const { data: auctionsRes, isLoading } = useQuery({
+  // My auctions (farmer only)
+  const { data: myAuctionsRes, isLoading: myLoading } = useQuery({
+    queryKey: ["farmerAuctions"],
+    queryFn: () => apiService.getFarmerAuctions(),
+    enabled: isFarmer,
+  });
+
+  // All public auctions
+  const { data: allAuctionsRes, isLoading: allLoading } = useQuery({
     queryKey: ["auctions"],
     queryFn: () => apiService.getAuctions(),
+    // Always fetch so switching tabs is instant
+    enabled: true,
   });
+
+  // Active dataset depending on role + tab
+  const auctionsRes = isFarmer
+    ? (farmerTab === "mine" ? myAuctionsRes : allAuctionsRes)
+    : allAuctionsRes;
+  const isLoading = isFarmer
+    ? (farmerTab === "mine" ? myLoading : allLoading)
+    : allLoading;
 
   const { mutate: deleteAuction, isPending: isDeleting } = useMutation({
     mutationFn: (id) => apiService.deleteAuction(id),
@@ -438,13 +458,34 @@ export default function AuctionsListingPage() {
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-agri-green-dark dark:text-agri-green-light tracking-tight">
-              Live Bidding Arena
+              {isFarmer ? (farmerTab === "mine" ? "My Auctions" : "Live Bidding Arena") : "Live Bidding Arena"}
             </h1>
             <p className="text-xs sm:text-sm text-agri-brown mt-1">
-              Participate in high-margin crop auctions in real-time.
+              {isFarmer
+                ? farmerTab === "mine"
+                  ? "View and manage all auctions you have created."
+                  : "Browse all live and upcoming auctions on the platform."
+                : "Participate in high-margin crop auctions in real-time."}
             </p>
+            {/* ── Farmer tab switcher ── */}
+            {isFarmer && (
+              <div className="flex mt-3 bg-agri-green/8 dark:bg-zinc-800 rounded-2xl p-1 gap-1 w-fit border border-agri-green/10">
+                <button
+                  onClick={() => { setFarmerTab("mine"); setSearchQuery(""); setFilterPhase("all"); }}
+                  className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${ farmerTab === "mine" ? "bg-agri-green text-white shadow" : "text-agri-brown hover:text-agri-green" }`}
+                >
+                  My Auctions
+                </button>
+                <button
+                  onClick={() => { setFarmerTab("all"); setSearchQuery(""); setFilterPhase("all"); }}
+                  className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${ farmerTab === "all" ? "bg-agri-green text-white shadow" : "text-agri-brown hover:text-agri-green" }`}
+                >
+                  All Auctions
+                </button>
+              </div>
+            )}
           </div>
-          {isFarmer && (
+          {isFarmer && farmerTab === "mine" && (
             <Link href="/auctions/create">
               <Button variant="primary" className="flex items-center gap-1.5 py-2.5 rounded-xl text-xs shadow-md shadow-agri-green/20">
                 <PlusCircle className="w-4 h-4" />
@@ -528,10 +569,18 @@ export default function AuctionsListingPage() {
           <div className="text-center py-20 bg-white/40 dark:bg-black/10 rounded-3xl border border-agri-green/5">
             <Landmark className="w-12 h-12 text-agri-brown/30 mx-auto mb-4" />
             <h3 className="text-base font-bold text-agri-green-dark dark:text-white">
-              {searchQuery ? `No results for "${searchQuery}"` : "No auctions available"}
+              {searchQuery
+                ? `No results for "${searchQuery}"`
+                : isFarmer
+                ? "You haven't created any auctions yet"
+                : "No auctions available"}
             </h3>
             <p className="text-xs text-agri-brown mt-1.5">
-              {searchQuery ? "Try a different search term." : "Check back later for new auction lots."}
+              {searchQuery
+                ? "Try a different search term."
+                : isFarmer
+                ? "Click \"Launch New Auction\" above to create your first auction."
+                : "Check back later for new auction lots."}
             </p>
             {searchQuery && (
               <button onClick={() => setSearchQuery("")} className="mt-4 text-xs text-agri-green font-bold hover:underline">
@@ -558,7 +607,7 @@ export default function AuctionsListingPage() {
                         key={a.id}
                         auction={a}
                         phase="live"
-                        isFarmerOwner={isFarmer && String(a.farmer === farmerUserId || a.farmerId === farmerUserId || a.farmer?._id === farmerUserId || a.farmer?.id === farmerUserId)}
+                        isFarmerOwner={isFarmer && farmerTab === "mine" && String(a.farmer === farmerUserId || a.farmerId === farmerUserId || a.farmer?._id === farmerUserId || a.farmer?.id === farmerUserId)}
                         onDeleteClick={setDeleteTarget}
                       />
                     ))}
