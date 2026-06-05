@@ -135,11 +135,11 @@ export default function OrderDetailContent() {
   const chatLocked  = isDelivered || isCancelled;
 
   useEffect(() => {
-    if (order) { 
-      setStatus(order.status); 
+    if (order) {
+      setStatus(order.status);
       setTimeline(order.timeline || []);
-      if(order.hasReview) setReviewSubmitted(true);
-     }
+      setReviewSubmitted(!!order.hasReview);
+    }
   }, [order]);
 
   // Load chat history

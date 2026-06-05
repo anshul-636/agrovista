@@ -81,7 +81,7 @@ When a farmer creates a listing or auction, they can request an AI price suggest
 
 ### 💬 Per-Order Chat
 
-Every fulfilled order automatically creates an isolated Socket.IO room (`chat:{orderId}`) for the farmer and buyer. Messages are persisted to MongoDB and loaded on reconnect, giving both parties a reliable communication channel tied directly to the transaction.
+Every fulfilled order automatically creates an isolated Socket.IO room (`chat:{orderId}`) for the farmer and buyer. Messages are persisted to MongoDB and loaded on reconnect, giving both parties a reliable communication channel tied directly to the transaction. Images can also be sent via Cloudinary upload.
 
 ### 📊 Farmer Analytics Dashboard
 
@@ -217,7 +217,6 @@ Socket.IO rooms used across the platform:
 | `auction:{auctionId}` | Real-time bid broadcast + participant count |
 | `chat:{orderId}` | Per-order buyer–farmer messaging |
 | `user:{userId}` | Personal push notifications |
-| `admin` | Admin-level broadcast events |
 
 ---
 
@@ -331,15 +330,18 @@ flowchart TD
 |---------|---------|------|
 | Next.js (App Router) | 14 | Framework, SSR, file-based routing |
 | Tailwind CSS | 3 | Utility-first styling |
-| Framer Motion | 10 | Page transitions and micro-animations |
-| Zustand | 4 | Global state — auth, cart, socket, notifications |
+| Framer Motion | 12 | Page transitions and micro-animations |
+| Zustand | 5 | Global state — auth, cart, socket, notifications |
 | TanStack React Query | 5 | Server-state caching and background refetching |
 | Socket.IO Client | 4 | Real-time bidding, chat, push alerts |
-| Recharts | 2 | Revenue and analytics charts |
+| Recharts | 3 | Revenue and analytics charts |
 | Leaflet.js | 1.9 | Interactive nearby-farms map |
 | React Hook Form + Zod | — | Forms with schema validation |
 | Axios | 1 | HTTP client with auto JWT injection via interceptor |
 | Sonner | — | Toast notifications |
+| next-themes | — | Dark/light theme switching |
+| clsx + tailwind-merge | — | Conditional class name utilities |
+| lucide-react | — | Icon library |
 | canvas-confetti | — | Auction win celebration 🎉 |
 
 ### Backend — `server/`
@@ -347,13 +349,14 @@ flowchart TD
 | Library | Version | Role |
 |---------|---------|------|
 | Express.js | 4 | REST API (14 route modules) |
-| Mongoose | 7 | MongoDB ODM with indexed schemas |
+| Mongoose | 8 | MongoDB ODM with indexed schemas |
 | Socket.IO | 4 | WebSocket server with JWT auth middleware |
-| Passport.js | 0.6 | Google OAuth 2.0 strategy |
-| Cloudinary SDK | 2 | Image upload and CDN delivery |
+| Passport.js | 0.7 | Google OAuth 2.0 strategy |
+| Cloudinary SDK | 1 | Image upload and CDN delivery |
+| Multer | 2 | Multipart/form-data file handling |
 | Razorpay SDK | 2 | Payment order creation and webhook verification |
-| Groq SDK | 0.5 | LLaMA 3.1 for AI pricing narration |
-| node-cron | 3 | Auction lifecycle scheduler (every minute) |
+| Groq SDK | 1 | LLaMA 3.1 for AI pricing narration |
+| node-cron | 4 | Auction lifecycle scheduler (every minute) |
 | Resend + Nodemailer | — | Transactional and fallback email |
 | bcryptjs | 2 | Password hashing (12 rounds) |
 | jsonwebtoken | 9 | JWT signing and verification (access + refresh) |
@@ -464,7 +467,7 @@ All protected routes require `Authorization: Bearer <access_token>`.
 | POST | `/register` | ❌ | Register with email + password, select role |
 | POST | `/login` | ❌ | Login, returns `accessToken` + `refreshToken` |
 | POST | `/refresh` | ❌ | Exchange refresh token for new access token |
-| POST | `/logout` | ✅ | Invalidate refresh token |
+| POST | `/logout` | ❌ | Invalidate refresh token |
 | GET | `/google` | ❌ | Redirect to Google OAuth consent screen |
 | GET | `/google/callback` | ❌ | OAuth callback, sets tokens and redirects to dashboard |
 | GET | `/me` | ✅ | Return current user profile |
@@ -475,11 +478,11 @@ All protected routes require `Authorization: Bearer <access_token>`.
 |--------|----------|------|-------------|
 | GET | `/` | ❌ | List all active products (filters: category, location, minPrice, maxPrice, isOrganic, search) |
 | GET | `/:id` | ❌ | Get single product detail + farmer info |
+| GET | `/:id/price-history` | ❌ | Get price history for a product |
 | POST | `/` | ✅ FARMER | Create listing (multipart/form-data with images) |
 | PUT | `/:id` | ✅ FARMER | Update own listing |
 | DELETE | `/:id` | ✅ FARMER | Soft-delete own listing |
-| GET | `/farmer/my` | ✅ FARMER | Farmer's own product listings |
-| POST | `/ai-price` | ✅ FARMER | Get AI price suggestion |
+| GET | `/farmer/mine` | ✅ FARMER | Farmer's own product listings |
 
 ### Auctions — `/api/auctions`
 
@@ -487,54 +490,69 @@ All protected routes require `Authorization: Bearer <access_token>`.
 |--------|----------|------|-------------|
 | GET | `/` | ❌ | List auctions (filter by status: UPCOMING, LIVE, ENDED) |
 | GET | `/:id` | ❌ | Get auction detail + bid history |
-| POST | `/` | ✅ FARMER | Create new auction |
-| PUT | `/:id` | ✅ FARMER | Update upcoming auction only |
+| POST | `/` | ✅ FARMER | Create new auction (multipart/form-data with single image) |
 | DELETE | `/:id` | ✅ FARMER | Cancel upcoming auction |
 | POST | `/:id/bid` | ✅ BUYER | Place a bid |
-| POST | `/:id/buy-now` | ✅ BUYER | Trigger buy-now |
-| GET | `/farmer/my` | ✅ FARMER | Farmer's own auctions |
+| POST | `/:id/checkout` | ✅ BUYER | Initiate checkout after winning (buy-now or auction end) |
+| POST | `/orders/:orderId/payment` | ✅ BUYER | Create Razorpay payment for auction order |
+| POST | `/orders/:orderId/verify-payment` | ✅ BUYER | Verify Razorpay payment for auction order |
+| GET | `/farmer/mine` | ✅ FARMER | Farmer's own auctions |
 
 ### Orders — `/api/orders`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
+| POST | `/` | ✅ BUYER | Place a new order directly |
 | GET | `/buyer` | ✅ BUYER | Buyer's order history |
 | GET | `/farmer` | ✅ FARMER | Farmer's incoming orders |
+| GET | `/my-orders` | ✅ | All orders for the current user (any role) |
 | GET | `/:id` | ✅ | Get order details (own orders only) |
 | PATCH | `/:id/status` | ✅ FARMER | Update order status |
+| PATCH | `/:id/verify` | ✅ BUYER | Verify delivery received |
 | POST | `/:id/cancel` | ✅ BUYER | Cancel order (Placed status only) |
 
-### Checkout & Payments — `/api/checkout`, `/api/payments`
+### Checkout — `/api/checkout`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/checkout` | ✅ BUYER | Create order from cart, returns Razorpay order ID |
-| POST | `/payments/verify` | ✅ BUYER | Verify Razorpay signature, mark payment PAID |
-| POST | `/payments/webhook` | ❌ | Razorpay webhook handler (HMAC verified) |
+| POST | `/create-order` | ✅ BUYER | Create Razorpay order from cart, returns Razorpay order ID |
+
+### Payments — `/api/payments`
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/create` | ✅ BUYER | Create a Razorpay payment order |
+| POST | `/verify` | ✅ BUYER | Verify Razorpay signature, mark payment PAID |
+| POST | `/webhook` | ❌ | Razorpay webhook handler (HMAC verified) |
 
 ### Chat — `/api/chat`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| GET | `/:orderId/messages` | ✅ | Load message history for an order |
-| POST | `/:orderId/messages` | ✅ | Send a message (also emitted via Socket.IO) |
+| GET | `/:orderId` | ✅ | Load message history for an order |
+| POST | `/:orderId` | ✅ | Send a message (also emitted via Socket.IO; supports image upload) |
+| DELETE | `/:orderId/clear` | ✅ | Clear all messages for an order |
 
 ### Analytics — `/api/analytics`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET | `/farmer` | ✅ FARMER | Revenue, orders, top products, auction stats |
-| GET | `/buyer` | ✅ BUYER | Spend, orders, categories, auction wins |
+
+### AI — `/api/ai`
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/price-advisor` | ✅ FARMER | Get AI price suggestion for a product |
 
 ### Other Modules
 
 | Module | Base Path | Key Endpoints |
 |--------|-----------|---------------|
-| Users | `/api/users` | `GET /profile`, `PUT /profile`, `PUT /change-password` |
-| Reviews | `/api/reviews` | `POST /` (BUYER), `GET /product/:id`, `GET /farmer/:id` |
-| Wishlist | `/api/wishlist` | `GET /`, `POST /:productId`, `DELETE /:productId` |
+| Users | `/api/users` | `GET /stats`, `GET /:id`, `GET /:id/reviews`, `PATCH /me`, `PUT /me/role`, `DELETE /me`, `POST /me/verification-request`, `POST /me/verification-upload` |
+| Reviews | `/api/reviews` | `GET /:farmerId`, `POST /:farmerId` (BUYER) |
+| Wishlist | `/api/wishlist` | `GET /`, `POST /:productId`, `DELETE /:productId`, `GET /:productId/check` |
 | Notifications | `/api/notifications` | `GET /` (paginated), `PATCH /:id/read`, `PATCH /read-all` |
-| AI | `/api/ai` | `POST /price-suggestion` |
 
 ---
 
@@ -545,37 +563,51 @@ agrovista/
 │
 ├── client/                              # Next.js 14 App Router
 │   ├── app/
-│   │   ├── (auth)/
-│   │   │   ├── login/page.jsx
-│   │   │   └── signup/page.jsx
-│   │   ├── (main)/
-│   │   │   ├── page.jsx                 # Landing page
-│   │   │   ├── products/
-│   │   │   │   ├── page.jsx             # Marketplace catalog
-│   │   │   │   └── [id]/page.jsx        # Product detail
-│   │   │   ├── auctions/
-│   │   │   │   ├── page.jsx             # Auction listing
-│   │   │   │   └── [id]/page.jsx        # Live auction room
-│   │   │   ├── dashboard/
-│   │   │   │   ├── farmer/page.jsx      # Farmer dashboard
-│   │   │   │   └── buyer/page.jsx       # Buyer dashboard
-│   │   │   ├── orders/
-│   │   │   │   ├── page.jsx             # Order list
-│   │   │   │   └── [id]/page.jsx        # Order detail + chat
-│   │   │   ├── cart/page.jsx
-│   │   │   ├── checkout/page.jsx
-│   │   │   └── map/page.jsx             # Nearby farms map
-│   │   ├── layout.jsx                   # Root layout with providers
-│   │   └── globals.css
+│   │   ├── page.jsx                     # Landing page
+│   │   ├── layout.js                    # Root layout with providers
+│   │   ├── globals.css
+│   │   ├── api/
+│   │   │   └── weather/route.js         # Next.js API route for weather proxy
+│   │   ├── login/page.jsx
+│   │   ├── signup/page.jsx
+│   │   ├── select-role/page.jsx         # Post-signup role selection
+│   │   ├── auth/callback/page.jsx       # Google OAuth callback handler
+│   │   ├── forgot-password/page.jsx
+│   │   ├── reset-password/page.jsx
+│   │   ├── profile/page.jsx             # Public farmer profile view
+│   │   ├── settings/page.jsx            # Account settings
+│   │   ├── messages/page.jsx            # Messaging inbox
+│   │   ├── notifications/page.jsx
+│   │   ├── products/
+│   │   │   ├── page.jsx                 # Marketplace catalog
+│   │   │   ├── [id]/page.jsx            # Product detail
+│   │   │   ├── create/page.jsx          # Create new listing (FARMER)
+│   │   │   ├── edit/page.jsx            # Edit existing listing (FARMER)
+│   │   │   └── my-listings/page.jsx     # Farmer's own listings
+│   │   ├── auctions/
+│   │   │   ├── page.jsx                 # Auction listing
+│   │   │   ├── [id]/page.jsx            # Live auction room
+│   │   │   ├── create/page.jsx          # Create new auction (FARMER)
+│   │   │   └── checkout/page.jsx        # Auction winner checkout
+│   │   ├── dashboard/
+│   │   │   ├── farmer/page.jsx          # Farmer dashboard
+│   │   │   └── buyer/page.jsx           # Buyer dashboard
+│   │   ├── orders/
+│   │   │   ├── page.jsx                 # Order list
+│   │   │   └── [id]/page.jsx            # Order detail + chat
+│   │   ├── cart/page.jsx
+│   │   └── checkout/
+│   │       ├── page.jsx                 # Standard cart checkout
+│   │       ├── success/page.jsx         # Payment success
+│   │       └── failed/page.jsx          # Payment failed
 │   │
 │   ├── components/
-│   │   ├── ui/                          # Reusable UI primitives
-│   │   ├── auction/                     # BidPanel, AuctionTimer, BidHistory
-│   │   ├── chat/                        # ChatWindow, MessageBubble
-│   │   ├── dashboard/                   # StatsCard, RevenueChart, OrderTable
-│   │   ├── map/                         # FarmMap (Leaflet wrapper)
-│   │   ├── product/                     # ProductCard, ProductForm, PriceWidget
-│   │   └── layout/                      # Navbar, Footer, Sidebar
+│   │   ├── ui/                          # Reusable UI primitives (Badge, Button, Card, Dialog, Input, Select, RawImage)
+│   │   ├── chat/                        # ChatBubbles, ChatContainer
+│   │   ├── dashboard/                   # CategoryDonut, RevenueChart, TopProducts, WeatherWidget
+│   │   ├── map/                         # NearbyFarmsMap (Leaflet wrapper)
+│   │   ├── orders/                      # OrderDetailContent
+│   │   └── shared/                      # Header, Sidebar
 │   │
 │   ├── store/
 │   │   ├── authStore.js                 # User session + JWT
@@ -586,45 +618,47 @@ agrovista/
 │   ├── lib/
 │   │   ├── api.js                       # Axios instance + request/response interceptors
 │   │   ├── socket.js                    # Socket.IO client factory
-│   │   └── utils.js                     # Currency formatting, date helpers, etc.
+│   │   └── utils.js                     # Utility helpers
 │   │
 │   └── providers/
 │       └── AppProviders.jsx             # QueryClient + Theme + Auth wrappers
 │
 └── server/                              # Node.js + Express
+    ├── index.js                         # Server entry point
     └── src/
+        ├── app.js                       # Express app setup, middleware, route mounting
         ├── modules/
-        │   ├── auth/                    # register, login, refresh, logout, Google OAuth
-        │   ├── users/                   # profile CRUD, password change
-        │   ├── products/                # listing CRUD, image upload, search/filter
-        │   ├── auctions/                # auction CRUD, bid placement, buy-now
+        │   ├── auth/                    # register, login, refresh, logout + oauth.routes.js (Google)
+        │   ├── users/                   # profile CRUD, verification flow, admin endpoints
+        │   ├── products/                # listing CRUD, image upload, price history
+        │   ├── auctions/                # auction CRUD, bid placement, checkout flow
         │   ├── orders/                  # order management, status transitions
         │   ├── checkout/                # cart → Razorpay order creation
-        │   ├── payments/                # Razorpay verification + webhook
-        │   ├── analytics/               # farmer/buyer analytics aggregation
-        │   ├── chat/                    # order message persistence
-        │   ├── reviews/                 # product and farmer reviews
+        │   ├── payments/                # Razorpay create, verify + webhook
+        │   ├── analytics/               # farmer analytics aggregation
+        │   ├── chat/                    # order message persistence + image support
+        │   ├── reviews/                 # farmer reviews
         │   ├── wishlist/                # buyer wishlist CRUD
         │   ├── notifications/           # notification read/unread management
-        │   └── ai/                      # Groq-powered price suggestion
+        │   └── ai/                      # Groq-powered price advisor
         │
         ├── models/
-        │   ├── User.model.js
-        │   ├── Product.model.js
-        │   ├── Auction.model.js
-        │   ├── Bid.model.js
-        │   ├── Order.model.js
-        │   ├── Message.model.js
-        │   ├── Notification.model.js
-        │   ├── Review.model.js
-        │   ├── Wishlist.model.js
-        │   └── PriceHistory.model.js
+        │   ├── User.js
+        │   ├── Product.js
+        │   ├── Auction.js
+        │   ├── Bid.js
+        │   ├── Order.js
+        │   ├── Message.js
+        │   ├── Notification.js
+        │   ├── Review.js
+        │   ├── Wishlist.js
+        │   └── PriceHistory.js
         │
         ├── config/
         │   ├── db.js                    # Mongoose connection
         │   ├── socket.js                # Socket.IO server init + JWT handshake
         │   ├── passport.js              # Google OAuth strategy
-        │   └── cloudinary.js            # Cloudinary SDK init
+        │   └── cloudinary.js            # Cloudinary SDK init + Multer storage
         │
         ├── middleware/
         │   ├── auth.js                  # JWT verify → req.user
@@ -634,10 +668,8 @@ agrovista/
         ├── jobs/
         │   └── auctionCron.js           # Every-minute auction state machine
         │
-        ├── services/
-        │   └── email.service.js         # Resend + Nodemailer abstraction
-        │
-        └── index.js                     # Server entry point
+        └── services/
+            └── email.service.js         # Resend + Nodemailer abstraction
 ```
 
 ---
@@ -746,7 +778,7 @@ EMAIL_FROM="AgroVista <onboarding@resend.dev>"
 # Sender name and address shown in outgoing emails
 
 ADMIN_EMAILS="admin@youremail.com"
-# Comma-separated list of admin emails for system alerts
+# Comma-separated list of admin emails for farmer verification requests
 
 # ── Payments ──────────────────────────────────────────────────────────────────
 RAZORPAY_KEY_ID="rzp_test_..."
@@ -799,7 +831,7 @@ NEXT_PUBLIC_SOCKET_URL="http://localhost:5000"
 | Password storage | bcryptjs with 12 salt rounds |
 | Payment integrity | Razorpay HMAC-SHA256 signature verification on every webhook and client-side payment confirmation |
 | Socket.IO | JWT verified on every connection handshake; unauthenticated sockets are disconnected immediately |
-| Rate limiting | `express-rate-limit` — 100 requests / 15 minutes per IP on auth routes, 500 / 15 min on API routes |
+| Rate limiting | `express-rate-limit` — login: 8 req/15 min · register: 5 req/1 hr · token refresh: 20 req/15 min · global API: 120 req/min (all per IP) |
 | HTTP headers | `helmet` sets `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy` and others |
 | Input validation | Zod schemas on the client; Mongoose schema validation + manual checks on the server |
 | CORS | Strict origin whitelist — only `CLIENT_URL` is allowed |
@@ -853,6 +885,7 @@ The cron job runs every minute. Check server logs for `[AuctionCron]` entries. E
 - [ ] **Farmer credit scoring** — On-chain or internal transaction history to enable micro-credit access
 - [ ] **Bulk order negotiation** — RFQ (Request for Quotation) flow for large-volume buyers
 - [ ] **Video auctions** — WebRTC-based live video during auction rooms
+- [ ] **Buyer analytics dashboard** — Spend tracking, category breakdown, auction win history
 
 ---
 
